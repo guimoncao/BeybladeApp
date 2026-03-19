@@ -41,6 +41,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install flet
 
+      - name: Aceitar licenças Android
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Mostrar versões
         run: |
           python --version
