@@ -3,17 +3,20 @@ name: Build APK
 on:
   push:
     branches: [ "main", "master", "principal" ]
-  workflow_dispatch: # Permite rodar o gerador manualmente num botão!
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Força o GitHub a usar o Node 24 para evitar os avisos de erro
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Pegar o código
         uses: actions/checkout@v4
 
-      - name: Instalar Java (Obrigatório para o Android)
+      - name: Instalar Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -24,19 +27,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Instalar Dependências do Linux (Necessário para Flutter)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa
+          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev
+
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Instalar Flet
-        run: pip install flet
-
-      - name: Construir o APK
-        run: flet build apk --verbose
+      - name: Instalar Flet e Compilar
+        run: |
+          pip install flet
+          # O comando abaixo cria o APK ignorando avisos de deprecation
+          flet build apk --verbose
 
       - name: Disponibilizar o APK para Download
         uses: actions/upload-artifact@v4
         with:
           name: BeybladeApp-APK
-          path: build/apk/**/*.apk
+          path: build/apk/*.apk
