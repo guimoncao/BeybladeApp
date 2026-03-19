@@ -8,15 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Força o GitHub a usar o Node 24 para evitar os avisos de erro
     env:
+      # Resolve o aviso do Node.js 20 e força o uso do Node 24
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Pegar o código
         uses: actions/checkout@v4
 
-      - name: Instalar Java
+      - name: Instalar Java (JDK 17)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar Dependências do Linux (Necessário para Flutter)
+      - name: Instalar Dependências de Compilação
         run: |
           sudo apt-get update
           sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa
@@ -38,10 +38,14 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Instalar Flet e Compilar
+      - name: Aceitar Licenças do Android (Crítico)
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Instalar Flet e Gerar APK
         run: |
           pip install flet
-          # O comando abaixo cria o APK ignorando avisos de deprecation
+          # O comando 'flet build apk' as vezes precisa rodar em modo headless no CI
           flet build apk --verbose
 
       - name: Disponibilizar o APK para Download
