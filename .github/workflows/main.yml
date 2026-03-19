@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Resolve o aviso do Node.js 20 e força o uso do Node 24
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
@@ -27,29 +26,30 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar Dependências de Compilação
+      - name: Instalar Dependências do Sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa
-          sudo apt-get install -y libgtk-3-dev libblkid-dev liblzma-dev
+          sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa libgtk-3-dev libblkid-dev liblzma-dev
 
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: '3.19.0' # Força uma versão estável e compatível
 
-      - name: Aceitar Licenças do Android (Crítico)
-        run: |
-          yes | sdkmanager --licenses || true
-
-      - name: Instalar Flet e Gerar APK
+      - name: Configurar Flet e Build
         run: |
           pip install flet
-          # O comando 'flet build apk' as vezes precisa rodar em modo headless no CI
+          flutter doctor # Verifica se o flutter está ok antes de começar
+          # O comando 'flet build apk' as vezes precisa criar pastas antes
+          mkdir -p build/apk
           flet build apk --verbose
+          
+      - name: Verificar se o APK foi criado
+        run: ls -R build/apk
 
       - name: Disponibilizar o APK para Download
         uses: actions/upload-artifact@v4
         with:
           name: BeybladeApp-APK
-          path: build/apk/*.apk
+          path: build/apk/**/*.apk
