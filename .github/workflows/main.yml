@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK Blindado
 
 on:
   push:
@@ -35,19 +35,18 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.19.0' # Força uma versão estável e compatível
+          flutter-version: '3.19.0'
 
-      - name: Configurar Flet e Build
+      - name: Preparar Flet e Build do APK
         run: |
           pip install flet
-          flutter doctor # Verifica se o flutter está ok antes de começar
-          # O comando 'flet build apk' as vezes precisa criar pastas antes
-          mkdir -p build/apk
-          flet build apk --verbose
+          # Cria a estrutura do projeto Flutter a partir do Python
+          flet build apk --no-docker --verbose
+        
+      - name: Verificar se o APK existe
+        run: |
+          find build/apk -name "*.apk"
           
-      - name: Verificar se o APK foi criado
-        run: ls -R build/apk
-
       - name: Disponibilizar o APK para Download
         uses: actions/upload-artifact@v4
         with:
