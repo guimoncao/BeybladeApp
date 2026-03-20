@@ -3,8 +3,9 @@ import time
 import math
 import json
 import os
+import threading # NOVO: Para rodar a atualização simultânea em segundo plano
+import requests  # NOVO: Para comunicar com a internet
 from datetime import datetime
-import requests # NOVO: Biblioteca para conectar com a internet
 
 # ==========================================
 # 1. DESIGN SYSTEM - PALETA CLEAN PREMIUM
@@ -28,31 +29,38 @@ C_SPIN = "#22C55E"        # Verde suave
 C_FLAG = "#EAB308"        # Amarelo suave
 
 # ==========================================
-# 2. BASE DE DADOS (AGORA NA NUVEM DO FIREBASE ☁️)
+# 2. BASE DE DADOS (MOTOR NA NUVEM SIMULTÂNEO)
 # ==========================================
 FIREBASE_URL = "https://beybladeapp-c303a-default-rtdb.firebaseio.com/beyblade_data.json"
 
-def load_db():
+# Inicia a variável em memória que todos vão usar
+app_data = {"bladers": [], "tournament": None, "active_match": None, "history": []}
+
+def safe_cloud_sync():
+    """
+    Trava de Segurança: Baixa os dados mais recentes da nuvem.
+    Usado ANTES de salvar qualquer coisa para não apagar o trabalho de outro juiz.
+    """
     try:
-        # Puxa os dados da nuvem em tempo real
-        resposta = requests.get(FIREBASE_URL)
-        if resposta.status_code == 200 and resposta.json() is not None:
-            return resposta.json()
-    except Exception as e:
-        print(f"Aviso: Não foi possível conectar ao Firebase. Iniciando banco vazio. {e}")
+        res = requests.get(FIREBASE_URL)
+        if res.status_code == 200 and res.json() is not None:
+            app_data.clear()
+            app_data.update(res.json())
+    except:
         pass
-    
-    # Se a nuvem estiver vazia (primeiro uso) ou sem internet
-    return {"bladers": [], "tournament": None, "active_match": None, "history": []}
+
+def load_db():
+    safe_cloud_sync()
+    return app_data
 
 def save_db(data):
     try:
-        # O comando PUT substitui o banco antigo pelo novo instantaneamente
         requests.put(FIREBASE_URL, json=data)
     except Exception as e:
         print(f"Aviso: Erro ao salvar na nuvem. {e}")
 
-app_data = load_db()
+# Puxa a nuvem logo ao abrir o app
+load_db()
 
 def get_bladers(): return app_data.get("bladers", [])
 def save_bladers(bladers_list): 
@@ -202,6 +210,7 @@ def main(page: ft.Page):
         
         def add_blader(e):
             if blader_input.value.strip():
+                safe_cloud_sync() # Trava de Segurança nuvem
                 b_list = get_bladers()
                 b_list.append({"id": str(int(time.time())), "name": blader_input.value.strip()})
                 save_bladers(b_list)
@@ -209,6 +218,7 @@ def main(page: ft.Page):
                 refresh_current_tab()
 
         def remove_blader(b_id):
+            safe_cloud_sync() # Trava de Segurança nuvem
             save_bladers([b for b in get_bladers() if b["id"] != b_id])
             refresh_current_tab()
 
@@ -232,6 +242,7 @@ def main(page: ft.Page):
             name_input = ft.TextField(label="Nome do Torneio", value=f"Torneio {datetime.now().strftime('%d/%m')}", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12)
 
             def confirm_create(e):
+                safe_cloud_sync() # Trava de Segurança nuvem
                 group_count = int(dd_groups.value)
                 groups = []
                 bladers_per_group = math.ceil(len(b_list) / group_count)
@@ -315,6 +326,7 @@ def main(page: ft.Page):
             )
 
             if is_tournament:
+                safe_cloud_sync() # 🚨 Trava de Segurança Nuvem: Puxa o banco ATUALIZADO antes de salvar esta partida
                 tourn = get_tournament()
                 w_id = active_match["b1_id"] if state["p1_score"] > state["p2_score"] else active_match["b2_id"]
                 
@@ -434,6 +446,7 @@ def main(page: ft.Page):
             return sorted(standings.values(), key=lambda x: (x["saldo"], x["xtreme"], x["pf"]), reverse=True)
 
         def advance_to_knockout(e):
+            safe_cloud_sync() # 🚨 Trava de Segurança
             group_tops = []
             for g in tourn["groups"]:
                 st = get_group_standings(g)
@@ -546,6 +559,7 @@ def main(page: ft.Page):
 
         def prompt_end_tourn(e):
             def handle_action(action):
+                safe_cloud_sync() # 🚨 Trava de Segurança
                 if action == "salvar": add_to_history(tourn)
                 save_tournament(None); set_active_match(None)
                 hide_dialog(dlg); refresh_current_tab()
@@ -723,5 +737,33 @@ def main(page: ft.Page):
 
     page.add(content_area, bottom_nav)
     change_tab_programmatic(0)
+
+    # ==========================================
+    # 🔄 MOTOR DE ATUALIZAÇÃO SIMULTÂNEA
+    # ==========================================
+    def auto_sync_loop():
+        """Motor que roda em segundo plano para manter as telas de todos os celulares iguais"""
+        while True:
+            time.sleep(5) # Verifica a nuvem a cada 5 segundos
+            try:
+                res = requests.get(FIREBASE_URL)
+                if res.status_code == 200:
+                    nuvem = res.json()
+                    
+                    # Se algo mudou na nuvem em relação ao que está no celular atual...
+                    if nuvem and json.dumps(nuvem) != json.dumps(app_data):
+                        app_data.clear()
+                        app_data.update(nuvem)
+                        
+                        # 🚨 Só atualiza a tela automaticamente se o juiz estiver nas abas: 
+                        # 0 (Bladers), 2 (Torneio) ou 3 (Histórico). 
+                        # Evitamos a aba 1 (Combate) para não atrapalhar o placar de uma partida em andamento.
+                        if bottom_nav.selected_index in [0, 2, 3]:
+                            refresh_current_tab()
+            except:
+                pass
+
+    # Liga o motor silencioso sem travar o aplicativo
+    threading.Thread(target=auto_sync_loop, daemon=True).start()
 
 ft.run(main)
