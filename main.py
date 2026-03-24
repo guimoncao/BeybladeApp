@@ -3,8 +3,8 @@ import time
 import math
 import json
 import os
-import threading # Para rodar a atualização simultânea em segundo plano
-import requests  # Para comunicar com a internet
+import threading 
+import requests  
 from datetime import datetime
 
 # ==========================================
@@ -28,33 +28,44 @@ C_SPIN = "#22C55E"
 C_FLAG = "#EAB308"        
 
 # ==========================================
-# 2. BASE DE DADOS (MOTOR NA NUVEM SIMULTÂNEO)
+# 2. BASE DE DADOS (MOTOR DA NUVEM À PROVA DE FALHAS)
 # ==========================================
 FIREBASE_URL = "https://beybladeapp-c303a-default-rtdb.firebaseio.com/beyblade_data.json"
 
-# Inicia a variável em memória que todos vão usar
 app_data = {"bladers": [], "tournament": None, "active_match": None, "history": []}
 
-def safe_cloud_sync():
-    """Trava de Segurança: Baixa os dados mais recentes da nuvem."""
+# 🚦 O SEMÁFORO GLOBAL: Impede que a nuvem sobrescreva seus dados enquanto você está salvando
+is_syncing = False
+
+def load_db():
     try:
-        res = requests.get(FIREBASE_URL)
+        res = requests.get(FIREBASE_URL, timeout=5)
         if res.status_code == 200 and res.json() is not None:
             app_data.clear()
             app_data.update(res.json())
     except:
         pass
 
-def load_db():
-    safe_cloud_sync()
-    return app_data
-
 def save_db(data):
-    try:
-        requests.put(FIREBASE_URL, json=data)
-    except Exception as e:
-        print(f"Aviso: Erro ao salvar na nuvem. {e}")
+    """Salva os dados de forma instantânea na tela, e envia para a nuvem escondido"""
+    global is_syncing
+    is_syncing = True # Acende a luz vermelha para o motor de atualização
+    
+    def _background_save(dados_para_salvar):
+        global is_syncing
+        for _ in range(3): # Tenta salvar até 3 vezes se a internet piscar
+            try:
+                res = requests.put(FIREBASE_URL, json=dados_para_salvar, timeout=5)
+                if res.status_code == 200:
+                    break 
+            except:
+                time.sleep(1.5)
+        is_syncing = False # Acende a luz verde, liberação concluída
 
+    dados_copia = json.loads(json.dumps(data))
+    threading.Thread(target=_background_save, args=(dados_copia,), daemon=True).start()
+
+# Carrega o banco assim que o app abre
 load_db()
 
 def get_bladers(): return app_data.get("bladers", [])
@@ -199,7 +210,6 @@ def main(page: ft.Page):
         
         def add_blader(e):
             if blader_input.value.strip():
-                safe_cloud_sync() 
                 b_list = get_bladers()
                 b_list.append({"id": str(int(time.time())), "name": blader_input.value.strip()})
                 save_bladers(b_list)
@@ -207,7 +217,6 @@ def main(page: ft.Page):
                 refresh_current_tab()
 
         def remove_blader(b_id):
-            safe_cloud_sync() 
             save_bladers([b for b in get_bladers() if b["id"] != b_id])
             refresh_current_tab()
 
@@ -230,7 +239,6 @@ def main(page: ft.Page):
             name_input = ft.TextField(label="Nome do Torneio", value=f"Torneio {datetime.now().strftime('%d/%m')}", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12)
 
             def confirm_create(e):
-                safe_cloud_sync() 
                 group_count = int(dd_groups.value)
                 groups = []
                 bladers_per_group = math.ceil(len(b_list) / group_count)
@@ -306,13 +314,7 @@ def main(page: ft.Page):
             state["match_ended"] = True
             winner = get_p1_name() if state["p1_score"] > state["p2_score"] else get_p2_name()
             
-            dlg = ft.AlertDialog(
-                bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
-                title=ft.Text(f"Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD)
-            )
-
             if is_tournament:
-                safe_cloud_sync() 
                 tourn = get_tournament()
                 w_id = active_match.get("b1_id") if state["p1_score"] > state["p2_score"] else active_match.get("b2_id")
                 
@@ -334,14 +336,24 @@ def main(page: ft.Page):
                                 if m.get("id") == active_match.get("match_id"):
                                     m["completed"] = True
                                     m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                save_tournament(tourn)
+                
+                save_tournament(tourn) # O salvamento invisível é disparado aqui
                 set_active_match(None) 
-                dlg.content = ft.Text("Resultado computado na tabela oficial.", color=C_TEXT_SEC)
-                dlg.actions = [PrimaryBtn("Voltar ao Torneio", lambda _: [hide_dialog(dlg), change_tab_programmatic(2)])]
+                
+                dlg = ft.AlertDialog(
+                    bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
+                    title=ft.Text(f"🏆 Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
+                    content=ft.Text("Resultado computado na tabela oficial.", color=C_SUCCESS),
+                    actions=[PrimaryBtn("Voltar ao Torneio", lambda _: [hide_dialog(dlg), change_tab_programmatic(2)])]
+                )
             else:
-                dlg.content = ft.Text("Partida amistosa finalizada.", color=C_TEXT_SEC)
-                dlg.actions = [PrimaryBtn("Concluir", lambda _: hide_dialog(dlg))]
-
+                dlg = ft.AlertDialog(
+                    bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
+                    title=ft.Text(f"Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
+                    content=ft.Text("Partida amistosa finalizada.", color=C_TEXT_SEC),
+                    actions=[PrimaryBtn("Concluir", lambda _: hide_dialog(dlg))]
+                )
+                
             show_dialog(dlg)
 
         def add_points(player, pts, type_finish):
@@ -414,7 +426,6 @@ def main(page: ft.Page):
             )
 
         bladers_map = get_snapshot_map(tourn)
-        # Define a aba inicial com base no status salvo na nuvem
         t_state = {"tab": "matamata" if tourn.get("status") == "knockout" else "grupos"}
         
         def get_group_standings(group):
@@ -423,8 +434,6 @@ def main(page: ft.Page):
                 if match.get("completed"):
                     res = match.get("result", {})
                     b1, b2, w = res.get("blader1Result", {}), res.get("blader2Result", {}), res.get("winner")
-                    
-                    # Evita erro se o resultado estiver corrompido
                     if not b1 or not b2: continue
 
                     for bx, bx_data in [(b1, standings.get(b1.get("bladerId"))), (b2, standings.get(b2.get("bladerId")))]:
@@ -440,7 +449,6 @@ def main(page: ft.Page):
             return sorted(standings.values(), key=lambda x: (x["saldo"], x["xtreme"], x["pf"]), reverse=True)
 
         def advance_to_knockout(e):
-            safe_cloud_sync() # 🚨 Trava de Segurança
             fresh_tourn = get_tournament()
             
             group_tops = []
@@ -497,7 +505,6 @@ def main(page: ft.Page):
             view_partidas.controls.append(ft.Text(group.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
             
             for match in group.get("matches", []):
-                # 🚨 BLINDAGEM DO KEYERROR: Usando .get() para não dar erro se faltar o blader1
                 b1_name = bladers_map.get(match.get("blader1"), "Blader Removido")
                 b2_name = bladers_map.get(match.get("blader2"), "Blader Removido")
                 
@@ -520,7 +527,6 @@ def main(page: ft.Page):
             for r_idx, round_data in enumerate(tourn.get("knockout", [])):
                 view_matamata.controls.append(ft.Text(round_data.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
                 for match in round_data.get("matches", []):
-                    # 🚨 BLINDAGEM DO KEYERROR no Mata-Mata
                     if match.get("blader1") is None or match.get("blader2") is None:
                         view_matamata.controls.append(AppCard(ft.Text("Aguardando definição...", color=C_TEXT_SEC, size=13, text_align="center"), padding=16))
                     else:
@@ -568,7 +574,6 @@ def main(page: ft.Page):
 
         def prompt_end_tourn(e):
             def handle_action(action):
-                safe_cloud_sync() 
                 if action == "salvar": add_to_history(tourn)
                 save_tournament(None); set_active_match(None)
                 hide_dialog(dlg); refresh_current_tab()
@@ -761,10 +766,16 @@ def main(page: ft.Page):
     # ==========================================
     def auto_sync_loop():
         """Motor que roda em segundo plano para manter as telas de todos os celulares iguais"""
+        global is_syncing
         while True:
             time.sleep(5) 
+            
+            # Se o aplicativo estiver salvando algum dado importante, o motor ESPERA.
+            if is_syncing:
+                continue 
+                
             try:
-                res = requests.get(FIREBASE_URL)
+                res = requests.get(FIREBASE_URL, timeout=5)
                 if res.status_code == 200:
                     nuvem = res.json()
                     
