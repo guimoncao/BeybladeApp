@@ -28,16 +28,15 @@ C_SPIN = "#22C55E"
 C_FLAG = "#EAB308"        
 
 # ==========================================
-# 2. BASE DE DADOS (MOTOR DA NUVEM À PROVA DE FALHAS)
+# 2. BASE DE DADOS (MOTOR DA NUVEM)
 # ==========================================
 FIREBASE_URL = "https://beybladeapp-c303a-default-rtdb.firebaseio.com/beyblade_data.json"
 
 app_data = {"bladers": [], "tournament": None, "active_match": None, "history": []}
+is_syncing = False 
 
-# 🚦 O SEMÁFORO GLOBAL: Impede que a nuvem sobrescreva seus dados enquanto você está salvando
-is_syncing = False
-
-def load_db():
+def safe_cloud_sync():
+    """Trava de Segurança: Baixa os dados mais recentes da nuvem."""
     try:
         res = requests.get(FIREBASE_URL, timeout=5)
         if res.status_code == 200 and res.json() is not None:
@@ -46,26 +45,26 @@ def load_db():
     except:
         pass
 
+def load_db():
+    safe_cloud_sync()
+    return app_data
+
 def save_db(data):
-    """Salva os dados de forma instantânea na tela, e envia para a nuvem escondido"""
     global is_syncing
-    is_syncing = True # Acende a luz vermelha para o motor de atualização
-    
+    is_syncing = True
     def _background_save(dados_para_salvar):
         global is_syncing
-        for _ in range(3): # Tenta salvar até 3 vezes se a internet piscar
+        for _ in range(3):
             try:
                 res = requests.put(FIREBASE_URL, json=dados_para_salvar, timeout=5)
-                if res.status_code == 200:
-                    break 
+                if res.status_code == 200: break
             except:
                 time.sleep(1.5)
-        is_syncing = False # Acende a luz verde, liberação concluída
+        is_syncing = False
 
     dados_copia = json.loads(json.dumps(data))
     threading.Thread(target=_background_save, args=(dados_copia,), daemon=True).start()
 
-# Carrega o banco assim que o app abre
 load_db()
 
 def get_bladers(): return app_data.get("bladers", [])
@@ -92,27 +91,27 @@ def AppCard(content, padding=16, on_click=None, data=None):
         on_click=on_click, data=data
     )
 
-def PrimaryBtn(text, on_click, width=None, height=48, icon=None, data=None, color=C_PRIMARY):
+def PrimaryBtn(text, on_click, width=None, height=48, icon=None, data=None, color=C_PRIMARY, expand=False):
     items = []
     if icon: items.append(ft.Icon(icon, color=C_TEXT_PRI, size=20))
     items.append(ft.Text(text, color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=14))
     return ft.Container(
         content=ft.Row(items, alignment=ft.MainAxisAlignment.CENTER, spacing=8) if icon else items[0],
-        bgcolor=color, padding=ft.padding.symmetric(horizontal=8, vertical=0),
+        bgcolor=color, padding=8,
         border_radius=12, alignment=ft.Alignment(0, 0), width=width, height=height,
-        on_click=on_click, data=data
+        on_click=on_click, data=data, expand=expand
     )
 
-def SecondaryBtn(text, on_click, width=None, height=48, icon=None, data=None):
+def SecondaryBtn(text, on_click, width=None, height=48, icon=None, data=None, expand=False):
     items = []
     if icon: items.append(ft.Icon(icon, color=C_TEXT_SEC, size=20))
     items.append(ft.Text(text, color=C_TEXT_SEC, weight=ft.FontWeight.W_500, size=13))
     return ft.Container(
         content=ft.Row(items, alignment=ft.MainAxisAlignment.CENTER, spacing=8) if icon else items[0],
-        bgcolor=C_SURFACE_SEC, padding=ft.padding.symmetric(horizontal=8, vertical=0),
+        bgcolor=C_SURFACE_SEC, padding=8,
         border_radius=12, border=ft.border.all(1, C_BORDER),
         alignment=ft.Alignment(0, 0), width=width, height=height,
-        on_click=on_click, data=data
+        on_click=on_click, data=data, expand=expand
     )
 
 def IconButton(icon, on_click, color=C_TEXT_SEC):
@@ -125,7 +124,7 @@ def IconButton(icon, on_click, color=C_TEXT_SEC):
 def Badge(text, color):
     return ft.Container(
         content=ft.Text(text, size=11, weight=ft.FontWeight.W_600, color=color),
-        padding=ft.padding.symmetric(horizontal=6, vertical=2),
+        padding=6,
         bgcolor=f"{color}15", border_radius=6, border=ft.border.all(1, f"{color}40")
     )
 
@@ -144,6 +143,7 @@ def main(page: ft.Page):
     page.theme = ft.Theme(font_family="Inter")
 
     history_state = {"active_tourn": None, "sub_tab": "tabelas"}
+    home_state = {"sub_tab": "cadastro", "selected_ids": []}
 
     def show_dialog(dlg):
         if dlg not in page.overlay: page.overlay.append(dlg)
@@ -199,9 +199,10 @@ def main(page: ft.Page):
         )
         show_dialog(dlg)
 
-    # --- TELA 1: INÍCIO (BLADERS) ---
+    # --- TELA 1: INÍCIO (BLADERS + CONFIGURAÇÃO NATIVA) ---
     def build_home_view():
         bladers = get_bladers()
+        
         blader_input = ft.TextField(
             hint_text="Nome do Blader...", expand=True, bgcolor=C_SURFACE_SEC, 
             border_color=C_BORDER, color=C_TEXT_PRI, text_size=14, border_radius=12,
@@ -210,6 +211,7 @@ def main(page: ft.Page):
         
         def add_blader(e):
             if blader_input.value.strip():
+                safe_cloud_sync() 
                 b_list = get_bladers()
                 b_list.append({"id": str(int(time.time())), "name": blader_input.value.strip()})
                 save_bladers(b_list)
@@ -217,6 +219,9 @@ def main(page: ft.Page):
                 refresh_current_tab()
 
         def remove_blader(b_id):
+            safe_cloud_sync() 
+            if b_id in home_state["selected_ids"]:
+                home_state["selected_ids"].remove(b_id)
             save_bladers([b for b in get_bladers() if b["id"] != b_id])
             refresh_current_tab()
 
@@ -229,23 +234,123 @@ def main(page: ft.Page):
                 ]), padding=12)
             )
 
-        def open_create_tourn_dialog(e):
-            b_list = get_bladers()
-            if len(b_list) < 2: return 
+        view_cadastro = ft.Column([
+            ft.Text("Adicionar Participantes", size=14, color=C_TEXT_SEC),
+            ft.Row([blader_input, PrimaryBtn("Add", add_blader, width=80, height=52)]),
+            ft.Container(height=12),
+            ft.Container(content=bladers_list_ui, expand=True)
+        ])
+
+        selection_list_ui = ft.ListView(expand=True, spacing=12)
+        
+        def toggle_selection(e, b_id):
+            if e.control.value:
+                if b_id not in home_state["selected_ids"]: home_state["selected_ids"].append(b_id)
+            else:
+                if b_id in home_state["selected_ids"]: home_state["selected_ids"].remove(b_id)
+            btn_criar.content.controls[1].value = f"Avançar para Passo 2 ({len(home_state['selected_ids'])})"
+            page.update()
+
+        for b in bladers:
+            selection_list_ui.controls.append(
+                AppCard(
+                    ft.Checkbox(
+                        label=b["name"], value=(b["id"] in home_state["selected_ids"]),
+                        on_change=lambda e, bid=b["id"]: toggle_selection(e, bid),
+                        fill_color=C_PRIMARY, check_color=C_BG, label_style=ft.TextStyle(color=C_TEXT_PRI, size=15, weight=ft.FontWeight.W_500)
+                    ), padding=8
+                )
+            )
+
+        view_config_container = ft.Container(expand=True)
+
+        def open_config_view(e):
+            selected_bladers = [b for b in get_bladers() if b["id"] in home_state["selected_ids"]]
+            total_b = len(selected_bladers)
             
-            max_groups = max(1, len(b_list) // 2)
-            options = [ft.dropdown.Option(key=str(i), text=f"{i} Grupo(s)") for i in range(1, max_groups + 1)]
-            dd_groups = ft.Dropdown(options=options, value="1", width=200, bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12)
+            if total_b < 2:
+                page.snack_bar = ft.SnackBar(ft.Text("Selecione pelo menos 2 Bladers!"), bgcolor=C_ERROR)
+                page.snack_bar.open = True; page.update()
+                return 
+            
+            config_state = {"num_groups": 1, "sizes": [total_b]}
+            max_groups = max(1, total_b // 2)
+            
+            dist_col = ft.Column(spacing=4) 
+            sum_text = ft.Text("", color=C_TEXT_SEC, size=13, weight=ft.FontWeight.W_600)
+
+            def update_dist_ui():
+                dist_col.controls.clear()
+                current_sum = sum(config_state["sizes"])
+                
+                for i in range(config_state["num_groups"]):
+                    def make_btn(idx, delta):
+                        def on_click(e):
+                            if config_state["sizes"][idx] + delta >= 1:
+                                config_state["sizes"][idx] += delta
+                                update_dist_ui()
+                        return ft.IconButton(ft.Icons.ADD if delta>0 else ft.Icons.REMOVE, on_click=on_click, icon_color=C_TEXT_PRI, bgcolor=C_SURFACE_SEC, width=35, height=35)
+
+                    dist_col.controls.append(
+                        ft.Row([
+                            ft.Text(f"Grupo {chr(65+i)}", color=C_TEXT_PRI, width=65, size=14, weight=ft.FontWeight.BOLD),
+                            make_btn(i, -1),
+                            ft.Text(str(config_state["sizes"][i]), color=C_TEXT_PRI, weight=ft.FontWeight.BOLD, width=20, text_align="center"),
+                            make_btn(i, 1)
+                        ], alignment=ft.MainAxisAlignment.CENTER, spacing=12)
+                    )
+                
+                diff = total_b - current_sum
+                if diff == 0:
+                    sum_text.value = f"✅ Total perfeito: {total_b} participantes"
+                    sum_text.color = C_SUCCESS
+                elif diff > 0:
+                    sum_text.value = f"⚠️ Faltam alocar {diff} participante(s)"
+                    sum_text.color = C_ERROR
+                else:
+                    sum_text.value = f"⚠️ Sobrando {-diff} vaga(s). Reduza."
+                    sum_text.color = C_ERROR
+                
+                page.update() 
+
+            def on_group_count_change(e=None):
+                new_count = int(dd_groups.value)
+                config_state["num_groups"] = new_count
+                base = total_b // new_count
+                rem = total_b % new_count
+                config_state["sizes"] = [base + (1 if i < rem else 0) for i in range(new_count)]
+                update_dist_ui()
+
+            dd_groups = ft.Dropdown(
+                options=[ft.dropdown.Option(key=str(i), text=f"{i} Grupo(s)") for i in range(1, max_groups + 1)], 
+                value="1", expand=True, bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12
+            )
+            dd_groups.on_change = on_group_count_change 
+            
+            btn_refresh = ft.Container(
+                content=ft.Icon(ft.Icons.SYNC, color=C_PRIMARY),
+                bgcolor=C_SURFACE_SEC, padding=12, border_radius=12, border=ft.border.all(1, C_BORDER),
+                on_click=on_group_count_change
+            )
+            
+            dd_advances = ft.Dropdown(options=[ft.dropdown.Option(key=str(i), text=f"{i} por Grupo") for i in range(1, 5)], value="2", expand=True, bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12)
             name_input = ft.TextField(label="Nome do Torneio", value=f"Torneio {datetime.now().strftime('%d/%m')}", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12)
 
             def confirm_create(e):
-                group_count = int(dd_groups.value)
-                groups = []
-                bladers_per_group = math.ceil(len(b_list) / group_count)
-                participants_snapshot = {b["id"]: b["name"] for b in b_list}
+                if sum(config_state["sizes"]) != total_b:
+                    page.snack_bar = ft.SnackBar(ft.Text("⚠️ Ajuste as vagas! A soma dos grupos deve ser igual ao número de participantes."), bgcolor=C_ERROR)
+                    page.snack_bar.open = True; page.update()
+                    return
 
-                for i in range(group_count):
-                    group_bladers = b_list[i * bladers_per_group : (i + 1) * bladers_per_group]
+                safe_cloud_sync() 
+                groups = []
+                participants_snapshot = {b["id"]: b["name"] for b in selected_bladers}
+
+                blader_idx = 0
+                for i, size in enumerate(config_state["sizes"]):
+                    group_bladers = selected_bladers[blader_idx : blader_idx + size]
+                    blader_idx += size
+                    
                     matches = [{"id": f"{i}-{j}-{k}-{int(time.time())}", "groupId": f"group-{i}", "blader1": group_bladers[j]["id"], "blader2": group_bladers[k]["id"], "completed": False} for j in range(len(group_bladers)) for k in range(j + 1, len(group_bladers))]
                     groups.append({"id": f"group-{i}", "name": f"Grupo {chr(65 + i)}", "bladerIds": [b["id"] for b in group_bladers], "matches": matches})
 
@@ -256,34 +361,74 @@ def main(page: ft.Page):
                     "groups": groups, 
                     "status": "groups", 
                     "knockout": [],
-                    "participants": participants_snapshot 
+                    "participants": participants_snapshot,
+                    "advancing_per_group": int(dd_advances.value)
                 })
-                hide_dialog(dlg)
+                
+                home_state["selected_ids"].clear()
+                switch_home_tab("selecao") 
                 bottom_nav.selected_index = 2
                 change_tab_programmatic(2)
             
-            dlg = ft.AlertDialog(
-                bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
-                title=ft.Text("Novo Torneio", color=C_TEXT_PRI, size=18, weight=ft.FontWeight.BOLD),
-                content=ft.Column([name_input, ft.Text("Distribuição:", color=C_TEXT_SEC, size=13), dd_groups], tight=True, spacing=16),
-                actions=[SecondaryBtn("Cancelar", lambda _: hide_dialog(dlg)), PrimaryBtn("Criar", confirm_create)]
-            )
-            show_dialog(dlg)
+            update_dist_ui()
 
-        return ft.Container(
-            padding=ft.padding.all(24),
-            content=ft.Column([
-                ft.Text("Gestão de Bladers", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI),
-                ft.Text("Adicione os participantes antes de iniciar o torneio.", size=14, color=C_TEXT_SEC, margin=ft.margin.only(bottom=16)),
-                ft.Row([blader_input, PrimaryBtn("Add", add_blader, width=80, height=52)]),
-                ft.Container(height=24),
-                ft.Container(content=bladers_list_ui, expand=True),
-                ft.Divider(color=C_BORDER, height=32),
-                PrimaryBtn("Iniciar Novo Torneio", open_create_tourn_dialog, width=float("inf"), icon=ft.Icons.ROCKET_LAUNCH)
-            ])
-        )
+            view_config_container.content = ft.Column([
+                ft.Text("Passo 2: Definir Grupos e Vagas", size=14, color=C_TEXT_SEC),
+                AppCard(ft.Column([
+                    name_input, 
+                    ft.Text("Quantidade de Grupos: (Se falhar, clique no ícone 🔄)", color=C_TEXT_SEC, size=13), 
+                    ft.Row([dd_groups, btn_refresh]), 
+                    ft.Text("Avançam por Grupo (Mata-Mata):", color=C_TEXT_SEC, size=13), 
+                    ft.Row([dd_advances]),
+                    ft.Divider(color=C_BORDER, height=20),
+                    ft.Text("Ajuste manual de vagas:", color=C_TEXT_SEC, size=13), dist_col,
+                    ft.Container(content=sum_text, alignment=ft.Alignment(0,0))
+                ], spacing=16)),
+                ft.Row([
+                    SecondaryBtn("Voltar", lambda _: switch_home_tab("selecao"), expand=True),
+                    PrimaryBtn("Finalizar e Criar", confirm_create, expand=True)
+                ], spacing=12)
+            ], scroll=ft.ScrollMode.AUTO)
 
-    # --- TELA 2: PARTIDA RÁPIDA ---
+            switch_home_tab("config")
+
+        btn_criar = PrimaryBtn(f"Avançar para Passo 2 ({len(home_state['selected_ids'])})", open_config_view, width=float("inf"), icon=ft.Icons.ROCKET_LAUNCH)
+        
+        view_selecao = ft.Column([
+            ft.Text("Passo 1: Marque os Bladers participantes", size=14, color=C_TEXT_SEC),
+            ft.Container(content=selection_list_ui, expand=True),
+            ft.Divider(color=C_BORDER, height=12),
+            btn_criar
+        ])
+
+        tab_nav_container = ft.Container()
+        content_switcher = ft.Container(expand=True)
+
+        def build_home_tab_row():
+            is_c = home_state["sub_tab"] == "cadastro"
+            is_s = home_state["sub_tab"] in ["selecao", "config"]
+            tabs = [
+                ft.Container(content=ft.Text("Banco Geral", size=13, weight=ft.FontWeight.W_600, color=C_TEXT_PRI if is_c else C_TEXT_SEC), expand=True, bgcolor=C_SURFACE_SEC if is_c else "transparent", padding=8, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: switch_home_tab("cadastro")),
+                ft.Container(content=ft.Text("Criar Torneio", size=13, weight=ft.FontWeight.W_600, color=C_TEXT_PRI if is_s else C_TEXT_SEC), expand=True, bgcolor=C_SURFACE_SEC if is_s else "transparent", padding=8, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: switch_home_tab("selecao"))
+            ]
+            tab_nav_container.content = ft.Container(content=ft.Row(tabs, spacing=4), bgcolor=C_BG, border=ft.border.all(1, C_BORDER), border_radius=10, padding=4, margin=ft.margin.only(bottom=16))
+
+        def switch_home_tab(tab_name):
+            home_state["sub_tab"] = tab_name
+            build_home_tab_row()
+            if tab_name == "cadastro":
+                content_switcher.content = view_cadastro
+            elif tab_name == "selecao":
+                content_switcher.content = view_selecao
+            elif tab_name == "config":
+                content_switcher.content = view_config_container
+            page.update()
+
+        switch_home_tab("cadastro")
+
+        return ft.Container(padding=24, content=ft.Column([ft.Text("Gestão de Bladers", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI), tab_nav_container, content_switcher]))
+
+    # --- TELA 2: PARTIDA RÁPIDA (BLINDADA E OTIMIZADA) ---
     def build_quick_match_view():
         active_match = get_active_match()
         is_tournament = active_match is not None
@@ -310,50 +455,69 @@ def main(page: ft.Page):
             get_p1_name = lambda: p1_input.value.strip() or "Jogador 1"
             get_p2_name = lambda: p2_input.value.strip() or "Jogador 2"
 
+        # 👑 A NOVA LÓGICA DE VITÓRIA (FIRE AND FORGET)
         def process_win():
             state["match_ended"] = True
             winner = get_p1_name() if state["p1_score"] > state["p2_score"] else get_p2_name()
             
-            if is_tournament:
-                tourn = get_tournament()
-                w_id = active_match.get("b1_id") if state["p1_score"] > state["p2_score"] else active_match.get("b2_id")
+            def finish_match(e):
+                hide_dialog(dlg)
                 
-                if active_match.get("is_knockout"):
-                    r_idx = active_match.get("round_idx")
-                    for m in tourn["knockout"][r_idx]["matches"]:
-                        if m.get("id") == active_match.get("match_id"):
-                            m["completed"] = True
-                            m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                    if all(m.get("completed") for m in tourn["knockout"][r_idx]["matches"]) and r_idx + 1 < len(tourn["knockout"]):
-                        winners = [m["result"]["winner"] for m in tourn["knockout"][r_idx]["matches"]]
-                        if len(tourn["knockout"][r_idx + 1]["matches"]) == 1 and len(winners) == 2:
-                            tourn["knockout"][r_idx + 1]["matches"][0]["blader1"] = winners[0]
-                            tourn["knockout"][r_idx + 1]["matches"][0]["blader2"] = winners[1]
-                else:
-                    for g in tourn.get("groups", []):
-                        if g.get("id") == active_match.get("group_id"):
-                            for m in g.get("matches", []):
+                if is_tournament:
+                    # Troca de aba IMEDIATAMENTE (Sensação de velocidade para o Juiz)
+                    change_tab_programmatic(2)
+                    page.snack_bar = ft.SnackBar(ft.Text("Sincronizando resultado em segundo plano..."), bgcolor=C_SURFACE_SEC, duration=2000)
+                    page.snack_bar.open = True
+                    page.update()
+
+                    # O fantasma que salva os dados na nuvem escondido
+                    def async_save_match():
+                        safe_cloud_sync() # Garante que os dados locais estão atualizados
+                        tourn = get_tournament()
+                        if not tourn: return
+                        
+                        w_id = active_match.get("b1_id") if state["p1_score"] > state["p2_score"] else active_match.get("b2_id")
+                        
+                        if active_match.get("is_knockout"):
+                            r_idx = active_match.get("round_idx")
+                            m_idx = 0
+                            for i, m in enumerate(tourn.get("knockout", [])[r_idx].get("matches", [])):
                                 if m.get("id") == active_match.get("match_id"):
+                                    m_idx = i
                                     m["completed"] = True
                                     m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                
-                save_tournament(tourn) # O salvamento invisível é disparado aqui
-                set_active_match(None) 
-                
-                dlg = ft.AlertDialog(
-                    bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
-                    title=ft.Text(f"🏆 Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
-                    content=ft.Text("Resultado computado na tabela oficial.", color=C_SUCCESS),
-                    actions=[PrimaryBtn("Voltar ao Torneio", lambda _: [hide_dialog(dlg), change_tab_programmatic(2)])]
-                )
-            else:
-                dlg = ft.AlertDialog(
-                    bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
-                    title=ft.Text(f"Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
-                    content=ft.Text("Partida amistosa finalizada.", color=C_TEXT_SEC),
-                    actions=[PrimaryBtn("Concluir", lambda _: hide_dialog(dlg))]
-                )
-                
+                                    break
+                            
+                            if r_idx + 1 < len(tourn.get("knockout", [])):
+                                next_m_idx = m_idx // 2
+                                is_p1 = (m_idx % 2 == 0)
+                                if is_p1:
+                                    tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader1"] = w_id
+                                else:
+                                    tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader2"] = w_id
+                        else:
+                            for g in tourn.get("groups", []):
+                                if g.get("id") == active_match.get("group_id"):
+                                    for m in g.get("matches", []):
+                                        if m.get("id") == active_match.get("match_id"):
+                                            m["completed"] = True
+                                            m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
+                        
+                        save_tournament(tourn) 
+                        set_active_match(None) 
+                    
+                    threading.Thread(target=async_save_match, daemon=True).start()
+                else:
+                    reset()
+
+            # 🚨 MODAL = TRUE (Impede que a caixa feche ao clicar fora dela)
+            dlg = ft.AlertDialog(
+                modal=True, 
+                bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
+                title=ft.Text(f"🏆 Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
+                content=ft.Text("A partida foi concluída. O resultado será registrado no sistema.", color=C_TEXT_SEC),
+                actions=[PrimaryBtn("Confirmar e Voltar", finish_match, width=float("inf"))]
+            )
             show_dialog(dlg)
 
         def add_points(player, pts, type_finish):
@@ -428,6 +592,68 @@ def main(page: ft.Page):
         bladers_map = get_snapshot_map(tourn)
         t_state = {"tab": "matamata" if tourn.get("status") == "knockout" else "grupos"}
         
+        def open_admin_panel(e):
+            safe_cloud_sync()
+            fresh_tourn = get_tournament()
+            
+            in_tourn = [{"id": k, "name": v} for k, v in fresh_tourn.get("participants", {}).items()]
+            all_bladers = get_bladers()
+            
+            out_tourn = [b for b in all_bladers if b["id"] not in fresh_tourn.get("participants", {})]
+
+            dd_sai = ft.Dropdown(options=[ft.dropdown.Option(key=b["id"], text=b["name"]) for b in in_tourn], label="Quem saiu?", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI)
+            
+            if not out_tourn:
+                content_ui = ft.Text("⚠️ Você não tem Reservas no Banco.\n\nVá até a aba 'Bladers', cadastre o substituto, e volte aqui.", color=C_ERROR, size=14, text_align="center")
+                actions_ui = [SecondaryBtn("Fechar", lambda _: hide_dialog(admin_dlg))]
+            else:
+                dd_entra = ft.Dropdown(options=[ft.dropdown.Option(key=b["id"], text=b["name"]) for b in out_tourn], label="Quem entra?", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI)
+                content_ui = ft.Column([ft.Text("O reserva herda a vaga e os pontos de quem saiu.", color=C_TEXT_SEC, size=13), dd_sai, ft.Icon(ft.Icons.SWAP_VERT, color=C_PRIMARY), dd_entra], tight=True, horizontal_alignment="center")
+                
+                def perform_swap(e):
+                    if not dd_sai.value or not dd_entra.value: return
+                    id_sai, id_entra = dd_sai.value, dd_entra.value
+                    nome_entra = next((b["name"] for b in out_tourn if b["id"] == id_entra), "Reserva")
+                    
+                    if id_sai in fresh_tourn.get("participants", {}): del fresh_tourn["participants"][id_sai]
+                    fresh_tourn["participants"][id_entra] = nome_entra
+                    
+                    for g in fresh_tourn.get("groups", []):
+                        g["bladerIds"] = [id_entra if x == id_sai else x for x in g.get("bladerIds", [])]
+                        for m in g.get("matches", []):
+                            if m.get("blader1") == id_sai: m["blader1"] = id_entra
+                            if m.get("blader2") == id_sai: m["blader2"] = id_entra
+                            if m.get("completed"):
+                                res = m.get("result", {})
+                                if res.get("blader1Result", {}).get("bladerId") == id_sai: 
+                                    res["blader1Result"]["bladerId"] = id_entra
+                                if res.get("blader2Result", {}).get("bladerId") == id_sai: 
+                                    res["blader2Result"]["bladerId"] = id_entra
+                                if res.get("winner") == id_sai: 
+                                    res["winner"] = id_entra
+                                
+                    for rd in fresh_tourn.get("knockout", []):
+                        for m in rd.get("matches", []):
+                            if m.get("blader1") == id_sai: m["blader1"] = id_entra
+                            if m.get("blader2") == id_sai: m["blader2"] = id_entra
+                            if m.get("completed"):
+                                res = m.get("result", {})
+                                if res.get("blader1Result", {}).get("bladerId") == id_sai: 
+                                    res["blader1Result"]["bladerId"] = id_entra
+                                if res.get("blader2Result", {}).get("bladerId") == id_sai: 
+                                    res["blader2Result"]["bladerId"] = id_entra
+                                if res.get("winner") == id_sai: 
+                                    res["winner"] = id_entra
+                    
+                    save_tournament(fresh_tourn)
+                    hide_dialog(admin_dlg)
+                    refresh_current_tab()
+                
+                actions_ui = [SecondaryBtn("Cancelar", lambda _: hide_dialog(admin_dlg)), PrimaryBtn("Substituir", perform_swap)]
+
+            admin_dlg = ft.AlertDialog(bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16), title=ft.Text("Troca Oficial", color=C_TEXT_PRI, weight=ft.FontWeight.BOLD), content=content_ui, actions=actions_ui)
+            show_dialog(admin_dlg)
+
         def get_group_standings(group):
             standings = {b_id: {"id": b_id, "name": bladers_map.get(b_id, "Blader Removido"), "j":0, "v":0, "d":0, "pf":0, "ps":0, "saldo":0, "xtreme":0} for b_id in group.get("bladerIds", [])}
             for match in group.get("matches", []):
@@ -435,13 +661,11 @@ def main(page: ft.Page):
                     res = match.get("result", {})
                     b1, b2, w = res.get("blader1Result", {}), res.get("blader2Result", {}), res.get("winner")
                     if not b1 or not b2: continue
-
                     for bx, bx_data in [(b1, standings.get(b1.get("bladerId"))), (b2, standings.get(b2.get("bladerId")))]:
                         if bx_data is None: continue
                         bx_data["j"] += 1; bx_data["pf"] += bx.get("totalPoints", 0); bx_data["xtreme"] += bx.get("finishes", {}).get("xtreme", 0)
                         if w == bx.get("bladerId"): bx_data["v"] += 1
                         else: bx_data["d"] += 1
-                    
                     if standings.get(b1.get("bladerId")): standings[b1["bladerId"]]["ps"] += b2.get("totalPoints", 0)
                     if standings.get(b2.get("bladerId")): standings[b2["bladerId"]]["ps"] += b1.get("totalPoints", 0)
             
@@ -449,23 +673,84 @@ def main(page: ft.Page):
             return sorted(standings.values(), key=lambda x: (x["saldo"], x["xtreme"], x["pf"]), reverse=True)
 
         def advance_to_knockout(e):
+            safe_cloud_sync() 
             fresh_tourn = get_tournament()
+            adv_per_group = int(fresh_tourn.get("advancing_per_group", 2))
             
-            group_tops = []
-            for g in fresh_tourn.get("groups", []):
-                st = get_group_standings(g)
-                if len(st) >= 2: group_tops.append([st[0]["id"], st[1]["id"]])
-                elif len(st) == 1: group_tops.append([st[0]["id"], None])
+            seeded_players = []
+            for pos in range(adv_per_group):
+                for g in fresh_tourn.get("groups", []):
+                    st = get_group_standings(g)
+                    if pos < len(st):
+                        seeded_players.append(st[pos]["id"])
+            
+            n = len(seeded_players)
+            if n < 2: return 
+            
+            p2 = 1
+            while p2 < n: p2 *= 2
+            
+            padded = seeded_players + [None] * (p2 - n)
+            
+            def get_seeds(size):
+                if size == 1: return [0]
+                half = get_seeds(size // 2)
+                res = []
+                for x in half:
+                    res.append(x)
+                    res.append(size - 1 - x)
+                return res
+                
+            order = get_seeds(p2)
+            ordered_players = [padded[i] for i in order]
             
             knockout = []
-            if len(fresh_tourn.get("groups", [])) == 1:
-                knockout.append({"name": "Grande Final", "matches": [{"id": f"final-{int(time.time())}", "blader1": group_tops[0][0] if len(group_tops)>0 else None, "blader2": group_tops[0][1] if len(group_tops)>0 else None, "completed": False}]})
-            else:
-                if len(group_tops) >= 2:
-                    knockout.append({"name": "Semifinais", "matches": [{"id": f"semi1-{int(time.time())}", "blader1": group_tops[0][0], "blader2": group_tops[1][1], "completed": False}, {"id": f"semi2-{int(time.time())}", "blader1": group_tops[1][0], "blader2": group_tops[0][1], "completed": False}]})
-                    knockout.append({"name": "Grande Final", "matches": [{"id": f"final-{int(time.time())}", "blader1": None, "blader2": None, "completed": False}]})
+            rounds = int(math.log2(p2))
+            round_names = {1: "Grande Final", 2: "Semifinais", 3: "Quartas de Final", 4: "Oitavas de Final", 5: "16 avos"}
             
-            fresh_tourn["knockout"] = knockout; fresh_tourn["status"] = "knockout"; save_tournament(fresh_tourn)
+            curr_matches = []
+            for i in range(0, p2, 2):
+                p1 = ordered_players[i]
+                p2_id = ordered_players[i+1]
+                is_bye = p1 is None or p2_id is None
+                winner = p1 if p2_id is None else p2_id if p1 is None else None
+                
+                m = {
+                    "id": f"r0-m{i//2}-{int(time.time())}",
+                    "blader1": p1,
+                    "blader2": p2_id,
+                    "completed": is_bye,
+                }
+                if is_bye and winner is not None:
+                    m["result"] = {
+                        "blader1Result": {"bladerId": p1, "totalPoints": 0, "finishes": {}},
+                        "blader2Result": {"bladerId": p2_id, "totalPoints": 0, "finishes": {}},
+                        "winner": winner
+                    }
+                curr_matches.append(m)
+                
+            knockout.append({"name": round_names.get(rounds, f"Rodada {1}"), "matches": curr_matches})
+            
+            for r in range(1, rounds):
+                next_matches = []
+                prev_matches = knockout[r-1].get("matches", [])
+                for i in range(len(prev_matches) // 2):
+                    m1 = prev_matches[i*2]
+                    m2 = prev_matches[i*2 + 1]
+                    b1 = m1.get("result", {}).get("winner") if m1.get("completed") else None
+                    b2 = m2.get("result", {}).get("winner") if m2.get("completed") else None
+                    
+                    next_matches.append({
+                        "id": f"r{r}-m{i}-{int(time.time())}",
+                        "blader1": b1,
+                        "blader2": b2,
+                        "completed": False
+                    })
+                knockout.append({"name": round_names.get(rounds - r, f"Rodada {r+1}"), "matches": next_matches})
+
+            fresh_tourn["knockout"] = knockout
+            fresh_tourn["status"] = "knockout"
+            save_tournament(fresh_tourn)
             refresh_current_tab()
 
         view_grupos = ft.ListView(expand=True, spacing=16, padding=ft.padding.only(top=16))
@@ -488,10 +773,12 @@ def main(page: ft.Page):
                 ft.Text("V", width=25, size=12, color=C_TEXT_SEC, text_align="center"), 
                 ft.Text("PF", width=25, size=12, color=C_TEXT_SEC, text_align="center"), 
                 ft.Text("Sld", width=30, size=12, color=C_TEXT_SEC, text_align="center")
-            ]), padding=ft.padding.symmetric(vertical=4, horizontal=8), border=ft.border.only(bottom=ft.BorderSide(1, C_BORDER))))
+            ]), padding=8, border=ft.border.only(bottom=ft.BorderSide(1, C_BORDER))))
+            
+            adv_limit = int(tourn.get("advancing_per_group", 2))
             
             for idx, st in enumerate(sorted_st):
-                is_top = idx < 2
+                is_top = idx < adv_limit 
                 g_col.controls.append(ft.Container(content=ft.Row([
                     ft.Text(str(idx+1), width=20, size=14, color=C_TEXT_PRI if is_top else C_TEXT_SEC, weight=ft.FontWeight.W_600 if is_top else ft.FontWeight.NORMAL), 
                     ft.Text(st["name"], expand=True, size=14, color=C_TEXT_PRI, overflow=ft.TextOverflow.ELLIPSIS), 
@@ -499,7 +786,7 @@ def main(page: ft.Page):
                     ft.Text(str(st["v"]), width=25, size=14, color=C_TEXT_SEC, text_align="center"), 
                     ft.Text(str(st["pf"]), width=25, size=14, color=C_TEXT_SEC, text_align="center"), 
                     ft.Text(str(st["saldo"]), width=30, size=14, color=C_SUCCESS if st["saldo"] > 0 else C_ERROR, text_align="center", weight=ft.FontWeight.W_500)
-                ]), padding=ft.padding.symmetric(vertical=8, horizontal=8), bgcolor=C_SURFACE_SEC if is_top else "transparent", border_radius=8))
+                ]), padding=8, bgcolor=C_SURFACE_SEC if is_top else "transparent", border_radius=8))
             view_grupos.controls.append(AppCard(g_col))
 
             view_partidas.controls.append(ft.Text(group.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
@@ -527,21 +814,28 @@ def main(page: ft.Page):
             for r_idx, round_data in enumerate(tourn.get("knockout", [])):
                 view_matamata.controls.append(ft.Text(round_data.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
                 for match in round_data.get("matches", []):
-                    if match.get("blader1") is None or match.get("blader2") is None:
-                        view_matamata.controls.append(AppCard(ft.Text("Aguardando definição...", color=C_TEXT_SEC, size=13, text_align="center"), padding=16))
-                    else:
-                        b1_name = bladers_map.get(match.get("blader1"), "Blader Removido")
-                        b2_name = bladers_map.get(match.get("blader2"), "Blader Removido")
-                        if match.get("completed"):
-                            res = match.get("result", {})
+                    b1_id = match.get("blader1")
+                    b2_id = match.get("blader2")
+                    b1_name = bladers_map.get(b1_id, "A definir") if b1_id else "A definir"
+                    b2_name = bladers_map.get(b2_id, "A definir") if b2_id else "A definir"
+                    
+                    if match.get("completed"):
+                        res = match.get("result", {})
+                        if b1_id is None or b2_id is None:
+                            status_ui = ft.Text("Avançou (W.O.)", color=C_TEXT_SEC, size=12)
+                        else:
                             pts1 = res.get("blader1Result", {}).get("totalPoints", 0)
                             pts2 = res.get("blader2Result", {}).get("totalPoints", 0)
                             status_ui = ft.Row([
                                 ft.Text(f"{pts1} - {pts2}", color=C_PRIMARY, weight=ft.FontWeight.BOLD, size=16), 
                                 IconButton(ft.Icons.INFO_OUTLINE, lambda e, md=match: open_match_details(md, tourn))
                             ])
+                        view_matamata.controls.append(AppCard(ft.Row([ft.Text(b1_name, size=14, color=C_TEXT_PRI), status_ui, ft.Text(b2_name, size=14, color=C_TEXT_PRI)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), padding=12))
+                    else:
+                        if b1_id is None or b2_id is None:
+                            status_ui = ft.Text("Aguardando...", color=C_TEXT_SEC, size=12)
                         else:
-                            status_ui = PrimaryBtn("Jogar", go_to_match, height=36, width=80, data={"is_knockout": True, "round_idx": r_idx, "match_id": match.get("id"), "b1_id": match.get("blader1"), "b1_name": b1_name, "b2_id": match.get("blader2"), "b2_name": b2_name})
+                            status_ui = PrimaryBtn("Jogar", go_to_match, height=36, width=80, data={"is_knockout": True, "round_idx": r_idx, "match_id": match.get("id"), "b1_id": b1_id, "b1_name": b1_name, "b2_id": b2_id, "b2_name": b2_name})
                         view_matamata.controls.append(AppCard(ft.Row([ft.Column([ft.Text(b1_name, size=14, weight=ft.FontWeight.W_500, color=C_TEXT_PRI), ft.Text("vs", size=10, color=C_TEXT_SEC), ft.Text(b2_name, size=14, weight=ft.FontWeight.W_500, color=C_TEXT_PRI)]), status_ui], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), padding=12))
 
         tab_nav_container = ft.Container(padding=ft.padding.symmetric(horizontal=24))
@@ -574,6 +868,7 @@ def main(page: ft.Page):
 
         def prompt_end_tourn(e):
             def handle_action(action):
+                safe_cloud_sync() 
                 if action == "salvar": add_to_history(tourn)
                 save_tournament(None); set_active_match(None)
                 hide_dialog(dlg); refresh_current_tab()
@@ -590,7 +885,10 @@ def main(page: ft.Page):
             content=ft.Column([
                 ft.Container(content=ft.Row([
                     ft.Column([ft.Text(tourn.get("name",""), size=20, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI), ft.Text("Em andamento", size=12, color=C_PRIMARY)], spacing=0),
-                    IconButton(ft.Icons.POWER_SETTINGS_NEW, prompt_end_tourn, color=C_ERROR)
+                    ft.Row([
+                        IconButton(ft.Icons.SWAP_HORIZ, open_admin_panel, color=C_PRIMARY),
+                        IconButton(ft.Icons.POWER_SETTINGS_NEW, prompt_end_tourn, color=C_ERROR)
+                    ])
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), padding=24),
                 tab_nav_container,
                 ft.Container(content=content_switcher, padding=ft.padding.symmetric(horizontal=24), expand=True)
@@ -644,18 +942,24 @@ def main(page: ft.Page):
             
             for r in t_data.get("knockout", []):
                 view_tabelas.controls.append(ft.Text(r.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
-                for m in r.get("matches", []):
-                    if m.get("completed"):
-                        res = m.get("result", {})
-                        b1_n = bladers_map.get(m.get("blader1"), "Blader Removido")
-                        b2_n = bladers_map.get(m.get("blader2"), "Blader Removido")
-                        pts1 = res.get("blader1Result", {}).get("totalPoints", 0)
-                        pts2 = res.get("blader2Result", {}).get("totalPoints", 0)
-                        status_ui = ft.Row([
-                            ft.Text(f"{pts1} - {pts2}", color=C_PRIMARY, weight=ft.FontWeight.BOLD, size=16), 
-                            IconButton(ft.Icons.INFO_OUTLINE, lambda e, md=m: open_match_details(md, t_data))
-                        ])
-                        view_tabelas.controls.append(AppCard(ft.Row([ft.Text(b1_n, size=14, color=C_TEXT_PRI), status_ui, ft.Text(b2_n, size=14, color=C_TEXT_PRI)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), padding=12))
+                for match in r.get("matches", []):
+                    b1_id = match.get("blader1")
+                    b2_id = match.get("blader2")
+                    b1_name = bladers_map.get(b1_id, "A definir") if b1_id else "A definir"
+                    b2_name = bladers_map.get(b2_id, "A definir") if b2_id else "A definir"
+
+                    if match.get("completed"):
+                        res = match.get("result", {})
+                        if b1_id is None or b2_id is None:
+                            status_ui = ft.Text("Avançou (W.O.)", color=C_TEXT_SEC, size=12)
+                        else:
+                            pts1 = res.get("blader1Result", {}).get("totalPoints", 0)
+                            pts2 = res.get("blader2Result", {}).get("totalPoints", 0)
+                            status_ui = ft.Row([
+                                ft.Text(f"{pts1} - {pts2}", color=C_PRIMARY, weight=ft.FontWeight.BOLD, size=16), 
+                                IconButton(ft.Icons.INFO_OUTLINE, lambda e, md=match: open_match_details(md, t_data))
+                            ])
+                        view_tabelas.controls.append(AppCard(ft.Row([ft.Text(b1_name, size=14, color=C_TEXT_PRI), status_ui, ft.Text(b2_name, size=14, color=C_TEXT_PRI)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), padding=12))
 
             view_stats = ft.ListView(expand=True, spacing=12, padding=ft.padding.only(top=16))
             for st in sorted_stats:
@@ -765,12 +1069,10 @@ def main(page: ft.Page):
     # 🔄 MOTOR DE ATUALIZAÇÃO SIMULTÂNEA
     # ==========================================
     def auto_sync_loop():
-        """Motor que roda em segundo plano para manter as telas de todos os celulares iguais"""
         global is_syncing
         while True:
             time.sleep(5) 
             
-            # Se o aplicativo estiver salvando algum dado importante, o motor ESPERA.
             if is_syncing:
                 continue 
                 
