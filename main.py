@@ -2,9 +2,9 @@ import flet as ft
 import time
 import math
 import json
-import os
 import threading 
 import requests  
+import random # 🎲 Biblioteca de sorteio importada!
 from datetime import datetime
 
 # ==========================================
@@ -36,7 +36,6 @@ app_data = {"bladers": [], "tournament": None, "active_match": None, "history": 
 is_syncing = False 
 
 def safe_cloud_sync():
-    """Trava de Segurança: Baixa os dados mais recentes da nuvem."""
     try:
         res = requests.get(FIREBASE_URL, timeout=5)
         if res.status_code == 200 and res.json() is not None:
@@ -346,9 +345,14 @@ def main(page: ft.Page):
                 groups = []
                 participants_snapshot = {b["id"]: b["name"] for b in selected_bladers}
 
+                # 🎲 LÓGICA DE SORTEIO ADICIONADA AQUI!
+                shuffled_bladers = list(selected_bladers)
+                random.shuffle(shuffled_bladers) # Embaralha os bladers antes de distribuir
+
                 blader_idx = 0
                 for i, size in enumerate(config_state["sizes"]):
-                    group_bladers = selected_bladers[blader_idx : blader_idx + size]
+                    # Pega os bladers já sorteados/embaralhados
+                    group_bladers = shuffled_bladers[blader_idx : blader_idx + size]
                     blader_idx += size
                     
                     matches = [{"id": f"{i}-{j}-{k}-{int(time.time())}", "groupId": f"group-{i}", "blader1": group_bladers[j]["id"], "blader2": group_bladers[k]["id"], "completed": False} for j in range(len(group_bladers)) for k in range(j + 1, len(group_bladers))]
@@ -386,7 +390,7 @@ def main(page: ft.Page):
                 ], spacing=16)),
                 ft.Row([
                     SecondaryBtn("Voltar", lambda _: switch_home_tab("selecao"), expand=True),
-                    PrimaryBtn("Finalizar e Criar", confirm_create, expand=True)
+                    PrimaryBtn("Sortear e Criar", confirm_create, expand=True) # Botão renomeado para refletir o sorteio
                 ], spacing=12)
             ], scroll=ft.ScrollMode.AUTO)
 
@@ -455,7 +459,6 @@ def main(page: ft.Page):
             get_p1_name = lambda: p1_input.value.strip() or "Jogador 1"
             get_p2_name = lambda: p2_input.value.strip() or "Jogador 2"
 
-        # 👑 A NOVA LÓGICA DE VITÓRIA (FIRE AND FORGET)
         def process_win():
             state["match_ended"] = True
             winner = get_p1_name() if state["p1_score"] > state["p2_score"] else get_p2_name()
@@ -464,15 +467,13 @@ def main(page: ft.Page):
                 hide_dialog(dlg)
                 
                 if is_tournament:
-                    # Troca de aba IMEDIATAMENTE (Sensação de velocidade para o Juiz)
                     change_tab_programmatic(2)
                     page.snack_bar = ft.SnackBar(ft.Text("Sincronizando resultado em segundo plano..."), bgcolor=C_SURFACE_SEC, duration=2000)
                     page.snack_bar.open = True
                     page.update()
 
-                    # O fantasma que salva os dados na nuvem escondido
                     def async_save_match():
-                        safe_cloud_sync() # Garante que os dados locais estão atualizados
+                        safe_cloud_sync() 
                         tourn = get_tournament()
                         if not tourn: return
                         
@@ -510,7 +511,6 @@ def main(page: ft.Page):
                 else:
                     reset()
 
-            # 🚨 MODAL = TRUE (Impede que a caixa feche ao clicar fora dela)
             dlg = ft.AlertDialog(
                 modal=True, 
                 bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
