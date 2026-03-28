@@ -4,7 +4,6 @@ import math
 import json
 import threading 
 import requests  
-import random # 🎲 Biblioteca de sorteio importada!
 from datetime import datetime
 
 # ==========================================
@@ -198,7 +197,7 @@ def main(page: ft.Page):
         )
         show_dialog(dlg)
 
-    # --- TELA 1: INÍCIO (BLADERS + CONFIGURAÇÃO NATIVA) ---
+    # --- TELA 1: INÍCIO (COM NOVO SISTEMA DE CONFIGURAÇÃO NATIVA) ---
     def build_home_view():
         bladers = get_bladers()
         
@@ -261,6 +260,7 @@ def main(page: ft.Page):
                 )
             )
 
+        # 👑 NOVO PAINEL DE CONFIGURAÇÃO DIRETO NA TELA (À PROVA DE FALHAS)
         view_config_container = ft.Container(expand=True)
 
         def open_config_view(e):
@@ -310,7 +310,7 @@ def main(page: ft.Page):
                     sum_text.value = f"⚠️ Sobrando {-diff} vaga(s). Reduza."
                     sum_text.color = C_ERROR
                 
-                page.update() 
+                page.update()
 
             def on_group_count_change(e=None):
                 new_count = int(dd_groups.value)
@@ -324,8 +324,10 @@ def main(page: ft.Page):
                 options=[ft.dropdown.Option(key=str(i), text=f"{i} Grupo(s)") for i in range(1, max_groups + 1)], 
                 value="1", expand=True, bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI, border_radius=12
             )
+            # Tenta rodar automaticamente
             dd_groups.on_change = on_group_count_change 
             
+            # BOTÃO DE ATUALIZAR (Para forçar caso o Dropdown falhe no Flet)
             btn_refresh = ft.Container(
                 content=ft.Icon(ft.Icons.SYNC, color=C_PRIMARY),
                 bgcolor=C_SURFACE_SEC, padding=12, border_radius=12, border=ft.border.all(1, C_BORDER),
@@ -345,14 +347,9 @@ def main(page: ft.Page):
                 groups = []
                 participants_snapshot = {b["id"]: b["name"] for b in selected_bladers}
 
-                # 🎲 LÓGICA DE SORTEIO ADICIONADA AQUI!
-                shuffled_bladers = list(selected_bladers)
-                random.shuffle(shuffled_bladers) # Embaralha os bladers antes de distribuir
-
                 blader_idx = 0
                 for i, size in enumerate(config_state["sizes"]):
-                    # Pega os bladers já sorteados/embaralhados
-                    group_bladers = shuffled_bladers[blader_idx : blader_idx + size]
+                    group_bladers = selected_bladers[blader_idx : blader_idx + size]
                     blader_idx += size
                     
                     matches = [{"id": f"{i}-{j}-{k}-{int(time.time())}", "groupId": f"group-{i}", "blader1": group_bladers[j]["id"], "blader2": group_bladers[k]["id"], "completed": False} for j in range(len(group_bladers)) for k in range(j + 1, len(group_bladers))]
@@ -376,6 +373,7 @@ def main(page: ft.Page):
             
             update_dist_ui()
 
+            # Preenche o container principal com a visão do Passo 2
             view_config_container.content = ft.Column([
                 ft.Text("Passo 2: Definir Grupos e Vagas", size=14, color=C_TEXT_SEC),
                 AppCard(ft.Column([
@@ -390,7 +388,7 @@ def main(page: ft.Page):
                 ], spacing=16)),
                 ft.Row([
                     SecondaryBtn("Voltar", lambda _: switch_home_tab("selecao"), expand=True),
-                    PrimaryBtn("Sortear e Criar", confirm_create, expand=True) # Botão renomeado para refletir o sorteio
+                    PrimaryBtn("Finalizar e Criar", confirm_create, expand=True)
                 ], spacing=12)
             ], scroll=ft.ScrollMode.AUTO)
 
@@ -432,7 +430,7 @@ def main(page: ft.Page):
 
         return ft.Container(padding=24, content=ft.Column([ft.Text("Gestão de Bladers", size=24, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI), tab_nav_container, content_switcher]))
 
-    # --- TELA 2: PARTIDA RÁPIDA (BLINDADA E OTIMIZADA) ---
+    # --- TELA 2: PARTIDA RÁPIDA ---
     def build_quick_match_view():
         active_match = get_active_match()
         is_tournament = active_match is not None
@@ -463,62 +461,56 @@ def main(page: ft.Page):
             state["match_ended"] = True
             winner = get_p1_name() if state["p1_score"] > state["p2_score"] else get_p2_name()
             
-            def finish_match(e):
-                hide_dialog(dlg)
-                
-                if is_tournament:
-                    change_tab_programmatic(2)
-                    page.snack_bar = ft.SnackBar(ft.Text("Sincronizando resultado em segundo plano..."), bgcolor=C_SURFACE_SEC, duration=2000)
-                    page.snack_bar.open = True
-                    page.update()
-
-                    def async_save_match():
-                        safe_cloud_sync() 
-                        tourn = get_tournament()
-                        if not tourn: return
-                        
-                        w_id = active_match.get("b1_id") if state["p1_score"] > state["p2_score"] else active_match.get("b2_id")
-                        
-                        if active_match.get("is_knockout"):
-                            r_idx = active_match.get("round_idx")
-                            m_idx = 0
-                            for i, m in enumerate(tourn.get("knockout", [])[r_idx].get("matches", [])):
-                                if m.get("id") == active_match.get("match_id"):
-                                    m_idx = i
-                                    m["completed"] = True
-                                    m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                                    break
-                            
-                            if r_idx + 1 < len(tourn.get("knockout", [])):
-                                next_m_idx = m_idx // 2
-                                is_p1 = (m_idx % 2 == 0)
-                                if is_p1:
-                                    tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader1"] = w_id
-                                else:
-                                    tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader2"] = w_id
-                        else:
-                            for g in tourn.get("groups", []):
-                                if g.get("id") == active_match.get("group_id"):
-                                    for m in g.get("matches", []):
-                                        if m.get("id") == active_match.get("match_id"):
-                                            m["completed"] = True
-                                            m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                        
-                        save_tournament(tourn) 
-                        set_active_match(None) 
-                    
-                    threading.Thread(target=async_save_match, daemon=True).start()
-                else:
-                    reset()
-
             dlg = ft.AlertDialog(
-                modal=True, 
                 bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
-                title=ft.Text(f"🏆 Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
-                content=ft.Text("A partida foi concluída. O resultado será registrado no sistema.", color=C_TEXT_SEC),
-                actions=[PrimaryBtn("Confirmar e Voltar", finish_match, width=float("inf"))]
+                title=ft.Text(f"Vitória de {winner}!", color=C_PRIMARY, weight=ft.FontWeight.BOLD),
+                content=ft.Row([ft.ProgressRing(width=20, height=20, color=C_PRIMARY, stroke_width=2), ft.Text(" Sincronizando...", color=C_TEXT_SEC)]),
+                actions=[] 
             )
             show_dialog(dlg)
+
+            if is_tournament:
+                def async_save_match():
+                    safe_cloud_sync() 
+                    tourn = get_tournament()
+                    w_id = active_match.get("b1_id") if state["p1_score"] > state["p2_score"] else active_match.get("b2_id")
+                    
+                    if active_match.get("is_knockout"):
+                        r_idx = active_match.get("round_idx")
+                        m_idx = 0
+                        for i, m in enumerate(tourn.get("knockout", [])[r_idx].get("matches", [])):
+                            if m.get("id") == active_match.get("match_id"):
+                                m_idx = i
+                                m["completed"] = True
+                                m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
+                                break
+                        
+                        if r_idx + 1 < len(tourn.get("knockout", [])):
+                            next_m_idx = m_idx // 2
+                            is_p1 = (m_idx % 2 == 0)
+                            if is_p1:
+                                tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader1"] = w_id
+                            else:
+                                tourn["knockout"][r_idx + 1]["matches"][next_m_idx]["blader2"] = w_id
+                    else:
+                        for g in tourn.get("groups", []):
+                            if g.get("id") == active_match.get("group_id"):
+                                for m in g.get("matches", []):
+                                    if m.get("id") == active_match.get("match_id"):
+                                        m["completed"] = True
+                                        m["result"] = {"blader1Result": {"bladerId": active_match.get("b1_id"), "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": active_match.get("b2_id"), "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
+                    
+                    save_tournament(tourn) 
+                    set_active_match(None) 
+                    dlg.content = ft.Text("Resultado computado na tabela oficial.", color=C_SUCCESS)
+                    dlg.actions = [PrimaryBtn("Voltar ao Torneio", lambda _: [hide_dialog(dlg), change_tab_programmatic(2)])]
+                    page.update()
+
+                threading.Thread(target=async_save_match, daemon=True).start()
+            else:
+                dlg.content = ft.Text("Partida amistosa finalizada.", color=C_TEXT_SEC)
+                dlg.actions = [PrimaryBtn("Concluir", lambda _: hide_dialog(dlg))]
+                page.update()
 
         def add_points(player, pts, type_finish):
             if state["match_ended"]: return 
