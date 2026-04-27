@@ -340,7 +340,18 @@ def main(page: ft.Page):
 
             def action_col(p): return ft.Column([PrimaryBtn(f"XTREME (+{PTS_MAP['xtreme']})", lambda _: add_points(p, PTS_MAP['xtreme'], "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+{PTS_MAP['burst']})", lambda _: add_points(p, PTS_MAP['burst'], "burst"), width=145, height=44), SecondaryBtn(f"OVER (+{PTS_MAP['over']})", lambda _: add_points(p, PTS_MAP['over'], "over"), width=145, height=44), SecondaryBtn(f"SPIN (+{PTS_MAP['spin']})", lambda _: add_points(p, PTS_MAP['spin'], "spin"), width=145, height=44), SecondaryBtn(f"FLAG (+{PTS_MAP['flag']})", lambda _: add_points(p, PTS_MAP['flag'], "flag"), width=145, height=44)], spacing=12, alignment=ft.MainAxisAlignment.START, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
-            return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [training_state.update({"sub_tab": "setup"}), refresh_current_tab()]), ft.Text(f"TREINO: {m_data['treino_nome'].upper()}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_SUCCESS, padding=12, width=float("inf")), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([p1_display, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300, margin=ft.margin.symmetric(horizontal=8)), ft.Column([p2_display, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START), ft.Container(expand=True), SecondaryBtn("Resetar", lambda _: [training_state.update({"p1_score": 0, "p2_score": 0, "p1_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "p2_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "match_ended": False}), setattr(score_p1, 'value', '0'), setattr(score_p2, 'value', '0'), page.update()], width=float("inf"), icon=ft.Icons.REFRESH)]))]))
+            return ft.Container(padding=0, expand=True, content=ft.Column([
+                ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [training_state.update({"sub_tab": "setup"}), refresh_current_tab()]), ft.Text(f"TREINO: {m_data['treino_nome'].upper()}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_SUCCESS, padding=12, width=float("inf")), 
+                ft.Container(padding=24, expand=True, content=ft.Column([
+                    ft.Row([
+                        ft.Column([p1_display, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), 
+                        ft.Container(width=1, bgcolor=C_BORDER, height=300, margin=ft.margin.symmetric(horizontal=8)), 
+                        ft.Column([p2_display, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                    ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START), 
+                    ft.Container(height=24), 
+                    SecondaryBtn("Resetar", lambda _: [training_state.update({"p1_score": 0, "p2_score": 0, "p1_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "p2_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "match_ended": False}), setattr(score_p1, 'value', '0'), setattr(score_p2, 'value', '0'), page.update()], width=float("inf"), icon=ft.Icons.REFRESH)
+                ], scroll=ft.ScrollMode.AUTO))
+            ]))
         else:
             hist = _get_training_history()
             def get_recent(key):
@@ -499,7 +510,18 @@ def main(page: ft.Page):
         def action_col(p):
             return ft.Column([PrimaryBtn(f"XTREME (+{PTS_MAP['xtreme']})", lambda _: add_points(p, PTS_MAP['xtreme'], "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+{PTS_MAP['burst']})", lambda _: add_points(p, PTS_MAP['burst'], "burst"), width=145, height=44), SecondaryBtn(f"OVER (+{PTS_MAP['over']})", lambda _: add_points(p, PTS_MAP['over'], "over"), width=145, height=44), SecondaryBtn(f"SPIN (+{PTS_MAP['spin']})", lambda _: add_points(p, PTS_MAP['spin'], "spin"), width=145, height=44), SecondaryBtn(f"FLAG (+{PTS_MAP['flag']})", lambda _: add_points(p, PTS_MAP['flag'], "flag"), width=145, height=44)], spacing=12, alignment=ft.MainAxisAlignment.START, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
-        return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Text("PARTIDA CASUAL", color=C_TEXT_SEC, weight=ft.FontWeight.W_600, size=13, text_align="center"), bgcolor=C_SURFACE_SEC, padding=12, width=float("inf")), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([p1_input, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300, margin=ft.margin.symmetric(horizontal=8)), ft.Column([p2_input, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START), ft.Container(expand=True), SecondaryBtn("Resetar Placar", reset, width=float("inf"), icon=ft.Icons.REFRESH)]))]))
+        return ft.Container(padding=0, expand=True, content=ft.Column([
+            ft.Container(content=ft.Text("PARTIDA CASUAL", color=C_TEXT_SEC, weight=ft.FontWeight.W_600, size=13, text_align="center"), bgcolor=C_SURFACE_SEC, padding=12, width=float("inf")), 
+            ft.Container(padding=24, expand=True, content=ft.Column([
+                ft.Row([
+                    ft.Column([p1_input, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), 
+                    ft.Container(width=1, bgcolor=C_BORDER, height=300, margin=ft.margin.symmetric(horizontal=8)), 
+                    ft.Column([p2_input, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START), 
+                ft.Container(height=24), 
+                SecondaryBtn("Resetar Placar", reset, width=float("inf"), icon=ft.Icons.REFRESH)
+            ], scroll=ft.ScrollMode.AUTO))
+        ]))
 
     # --- TELA 4: TORNEIO ---
     def build_tournament_view():
@@ -639,7 +661,17 @@ def main(page: ft.Page):
 
             def action_col(p): return ft.Column([PrimaryBtn(f"XTREME (+3)", lambda _: add_points(p, 3, "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+2)", lambda _: add_points(p, 2, "burst"), width=145, height=44), SecondaryBtn(f"OVER (+2)", lambda _: add_points(p, 2, "over"), width=145, height=44), SecondaryBtn(f"SPIN (+1)", lambda _: add_points(p, 1, "spin"), width=145, height=44), SecondaryBtn(f"FLAG (+{PTS_MAP['flag']})", lambda _: add_points(p, PTS_MAP['flag'], "flag"), width=145, height=44)], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
-            return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [tourn_state.update({"sub_tab": "partidas", "active_match": None}), refresh_current_tab()]), ft.Text(f"PARTIDA OFICIAL {'(MD3)' if is_md3 else ''}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_ERROR if m_data["is_knockout"] else C_PRIMARY, padding=12), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([ft.Text(m_data["b1_name"]), sets_p1, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300), ft.Column([ft.Text(m_data["b2_name"]), sets_p2, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)]), ft.Container(expand=True)]))]))
+            return ft.Container(padding=0, expand=True, content=ft.Column([
+                ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [tourn_state.update({"sub_tab": "partidas", "active_match": None}), refresh_current_tab()]), ft.Text(f"PARTIDA OFICIAL {'(MD3)' if is_md3 else ''}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_ERROR if m_data["is_knockout"] else C_PRIMARY, padding=12), 
+                ft.Container(padding=24, expand=True, content=ft.Column([
+                    ft.Row([
+                        ft.Column([ft.Text(m_data["b1_name"]), sets_p1, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), 
+                        ft.Container(width=1, bgcolor=C_BORDER, height=300), 
+                        ft.Column([ft.Text(m_data["b2_name"]), sets_p2, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                    ], alignment=ft.MainAxisAlignment.CENTER, vertical_alignment=ft.CrossAxisAlignment.START), 
+                    ft.Container(height=24)
+                ], scroll=ft.ScrollMode.AUTO))
+            ]))
             
         else:
             def open_admin_panel(e):
