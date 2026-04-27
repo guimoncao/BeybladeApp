@@ -378,10 +378,57 @@ def main(page: ft.Page):
                 if not treino_nome_input.value or not combo_test_input.value or not combo_adv_input.value or not lado_dropdown.value: return
                 training_state.update({"match_data": {"treino_nome": treino_nome_input.value.strip(), "combo_testado": combo_test_input.value.strip(), "combo_adversario": combo_adv_input.value.strip(), "lado_arena": lado_dropdown.value}, "p1_score": 0, "p2_score": 0, "p1_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "p2_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "match_ended": False, "sub_tab": "combat"}); refresh_current_tab()
             
+            def export_csv(e):
+                local_hist = _get_training_history()
+                if not local_hist:
+                    page.snack_bar = ft.SnackBar(ft.Text("Nenhum histórico para exportar!"), bgcolor=C_ERROR)
+                    page.snack_bar.open = True; page.update(); return
+                try:
+                    file_path = f"historico_treino_{int(time.time())}.csv"
+                    with open(file_path, mode='w', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["DATA", "NOME_TREINO", "COMBO_TESTADO", "COMBO_ADVERSARIO", "LADO_ARENA", "RESULTADO", "PLACAR", "MEU_XT", "MEU_BU", "MEU_OV", "MEU_SP", "MEU_FL", "ADV_XT", "ADV_BU", "ADV_OV", "ADV_SP", "ADV_FL"])
+                        for h in local_hist:
+                            writer.writerow([
+                                h.get("DATA", ""), h.get("NOME_TREINO", ""), h.get("COMBO_TESTADO", ""), h.get("COMBO_ADVERSARIO", ""), h.get("LADO_ARENA", ""), h.get("RESULTADO", ""), h.get("PLACAR", ""),
+                                h.get("MEU_XTREME", 0), h.get("MEU_BURST", 0), h.get("MEU_OVER", 0), h.get("MEU_SPIN", 0), h.get("MEU_FLAG", 0),
+                                h.get("ADV_XTREME", 0), h.get("ADV_BURST", 0), h.get("ADV_OVER", 0), h.get("ADV_SPIN", 0), h.get("ADV_FLAG", 0)
+                            ])
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Salvo localmente como: {file_path}"), bgcolor=C_SUCCESS)
+                except Exception as ex:
+                    page.snack_bar = ft.SnackBar(ft.Text(f"Erro ao exportar: {ex}"), bgcolor=C_ERROR)
+                page.snack_bar.open = True; page.update()
+
+            def confirm_delete_training(t_id):
+                def do_delete(e):
+                    safe_cloud_sync()
+                    with db_lock: 
+                        app_data["training_history"] = [h for h in app_data.get("training_history", []) if h.get("id") != t_id]
+                    save_db(app_data); hide_dialog(dlg); refresh_current_tab()
+                    page.snack_bar = ft.SnackBar(ft.Text("Treino apagado!"), bgcolor=C_SUCCESS); page.snack_bar.open = True; page.update()
+                
+                dlg = ft.AlertDialog(
+                    bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16),
+                    title=ft.Text("Excluir Treino", color=C_TEXT_PRI),
+                    content=ft.Text("Deseja apagar este registro permanentemente?", color=C_TEXT_SEC),
+                    actions=[SecondaryBtn("Cancelar", lambda _: hide_dialog(dlg)), PrimaryBtn("Excluir", do_delete, color=C_ERROR)]
+                )
+                show_dialog(dlg)
+
             hist_list = ft.ListView(expand=True, spacing=10)
             for h in hist:
                 res_color = C_SUCCESS if h.get("RESULTADO") == "Vitória" else C_ERROR
-                hist_list.controls.append(AppCard(ft.Column([ft.Row([ft.Text(h.get("DATA", ""), color=C_TEXT_SEC, size=12), ft.Text(h.get("RESULTADO", ""), color=res_color, weight=ft.FontWeight.BOLD)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Text(f"Treino: {h.get('NOME_TREINO', 'N/A')}", color=C_PRIMARY, weight=ft.FontWeight.BOLD, size=14), ft.Text(f"Meu: {h.get('COMBO_TESTADO')}  VS  Adv: {h.get('COMBO_ADVERSARIO')}", color=C_TEXT_PRI, weight=ft.FontWeight.W_500), ft.Text(f"Placar: {h.get('PLACAR')} | Lado: {h.get('LADO_ARENA')}", color=C_TEXT_SEC, size=13)], spacing=4), padding=12))
+                top_row = ft.Row([
+                    ft.Row([ft.Text(h.get("DATA", ""), color=C_TEXT_SEC, size=12), ft.Text(h.get("RESULTADO", ""), color=res_color, weight=ft.FontWeight.BOLD)], spacing=8),
+                    IconButton(ft.Icons.DELETE_OUTLINE, lambda e, tid=h.get("id"): confirm_delete_training(tid), color=C_ERROR)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                
+                hist_list.controls.append(AppCard(ft.Column([
+                    top_row,
+                    ft.Text(f"Treino: {h.get('NOME_TREINO', 'N/A')}", color=C_PRIMARY, weight=ft.FontWeight.BOLD, size=14), 
+                    ft.Text(f"Meu: {h.get('COMBO_TESTADO')}  VS  Adv: {h.get('COMBO_ADVERSARIO')}", color=C_TEXT_PRI, weight=ft.FontWeight.W_500), 
+                    ft.Text(f"Placar: {h.get('PLACAR')} | Lado: {h.get('LADO_ARENA')}", color=C_TEXT_SEC, size=13)
+                ], spacing=4), padding=12))
             
             return ft.Container(padding=24, content=ft.Column([
                 ft.Text("Laboratório de Combos", size=24, weight=ft.FontWeight.BOLD, color=C_PRIMARY), 
@@ -391,7 +438,10 @@ def main(page: ft.Page):
                 lado_dropdown, 
                 PrimaryBtn("Arena de Treino", start_training, width=float("inf"), icon=ft.Icons.PLAY_ARROW), 
                 ft.Divider(color=C_BORDER, height=20), 
-                ft.Text("Histórico Privado", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI), 
+                ft.Row([
+                    ft.Text("Histórico Privado", size=18, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI, expand=True),
+                    SecondaryBtn("Exportar CSV", export_csv, icon=ft.Icons.DOWNLOAD, height=36)
+                ]),
                 ft.Container(content=hist_list, expand=True)
             ], scroll=ft.ScrollMode.AUTO))
 
