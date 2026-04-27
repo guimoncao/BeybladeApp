@@ -9,6 +9,7 @@ import random
 import csv
 import os
 from datetime import datetime
+from functools import cmp_to_key
 
 # ==========================================
 # 1. DESIGN SYSTEM E CONSTANTES
@@ -529,7 +530,6 @@ def main(page: ft.Page):
                 if state["match_ended"]: return 
                 state["match_ended"] = True
                 
-                # Se for MD3, quem avança é quem fez mais sets. Senão, quem fez mais pontos no jogo único.
                 if is_md3:
                     w_id = m_data["b1_id"] if state.get("p1_sets", 0) > state.get("p2_sets", 0) else m_data["b2_id"]
                 else:
@@ -558,7 +558,6 @@ def main(page: ft.Page):
                                         m["result"] = final_res
                                         target_w = m.get("target_w"); target_l = m.get("target_l")
                                         
-                                        # MÁGICA DO BRACKET RESET
                                         if m.get("id") == "gf":
                                             losses = 0
                                             for rx in fresh_t.get("knockout", []):
@@ -638,7 +637,7 @@ def main(page: ft.Page):
                     else:
                         process_win()
 
-            def action_col(p): return ft.Column([PrimaryBtn(f"XTREME (+3)", lambda _: add_points(p, 3, "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+2)", lambda _: add_points(p, 2, "burst"), width=145, height=44), SecondaryBtn(f"OVER (+2)", lambda _: add_points(p, 2, "over"), width=145, height=44), SecondaryBtn(f"SPIN (+1)", lambda _: add_points(p, 1, "spin"), width=145, height=44)], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+            def action_col(p): return ft.Column([PrimaryBtn(f"XTREME (+3)", lambda _: add_points(p, 3, "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+2)", lambda _: add_points(p, 2, "burst"), width=145, height=44), SecondaryBtn(f"OVER (+2)", lambda _: add_points(p, 2, "over"), width=145, height=44), SecondaryBtn(f"SPIN (+1)", lambda _: add_points(p, 1, "spin"), width=145, height=44), SecondaryBtn(f"FLAG (+{PTS_MAP['flag']})", lambda _: add_points(p, PTS_MAP['flag'], "flag"), width=145, height=44)], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
             return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [tourn_state.update({"sub_tab": "partidas", "active_match": None}), refresh_current_tab()]), ft.Text(f"PARTIDA OFICIAL {'(MD3)' if is_md3 else ''}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_ERROR if m_data["is_knockout"] else C_PRIMARY, padding=12), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([ft.Text(m_data["b1_name"]), sets_p1, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300), ft.Column([ft.Text(m_data["b2_name"]), sets_p2, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)]), ft.Container(expand=True)]))]))
             
@@ -675,19 +674,37 @@ def main(page: ft.Page):
 
             def get_group_standings(group):
                 standings = {b_id: {"id": b_id, "name": bladers_map.get(b_id, "Removido"), "j":0, "v":0, "d":0, "pf":0, "ps":0, "saldo":0, "xtreme":0} for b_id in group.get("bladerIds", [])}
+                h2h_wins = {b_id: [] for b_id in group.get("bladerIds", [])}
+                
                 for match in group.get("matches", []):
                     if match.get("completed"):
                         res = match.get("result", {}); b1, b2, w = res.get("blader1Result", {}), res.get("blader2Result", {}), res.get("winner")
                         if not b1 or not b2: continue
-                        for bx, bx_data in [(b1, standings.get(b1.get("bladerId"))), (b2, standings.get(b2.get("bladerId")))]:
+                        
+                        b1_id = b1.get("bladerId"); b2_id = b2.get("bladerId")
+                        if w == b1_id: h2h_wins[b1_id].append(b2_id)
+                        elif w == b2_id: h2h_wins[b2_id].append(b1_id)
+                        
+                        for bx, bx_data in [(b1, standings.get(b1_id)), (b2, standings.get(b2_id))]:
                             if bx_data is None: continue
                             bx_data["j"] += 1; bx_data["pf"] += bx.get("totalPoints", 0); bx_data["xtreme"] += bx.get("finishes", {}).get("xtreme", 0)
                             if w == bx.get("bladerId"): bx_data["v"] += 1
                             else: bx_data["d"] += 1
-                        if standings.get(b1.get("bladerId")): standings[b1["bladerId"]]["ps"] += b2.get("totalPoints", 0)
-                        if standings.get(b2.get("bladerId")): standings[b2["bladerId"]]["ps"] += b1.get("totalPoints", 0)
+                        if standings.get(b1_id): standings[b1_id]["ps"] += b2.get("totalPoints", 0)
+                        if standings.get(b2_id): standings[b2_id]["ps"] += b1.get("totalPoints", 0)
+                
                 for s in standings.values(): s["saldo"] = s["pf"] - s["ps"]
-                return sorted(standings.values(), key=lambda x: (x["v"], x["saldo"], x["xtreme"], x["pf"]), reverse=True)
+                
+                def cmp_standings(a, b):
+                    if a["v"] != b["v"]: return b["v"] - a["v"]
+                    if a["saldo"] != b["saldo"]: return b["saldo"] - a["saldo"]
+                    if b["id"] in h2h_wins.get(a["id"], []): return -1
+                    if a["id"] in h2h_wins.get(b["id"], []): return 1
+                    if a["xtreme"] != b["xtreme"]: return b["xtreme"] - a["xtreme"]
+                    if a["pf"] != b["pf"]: return b["pf"] - a["pf"]
+                    return 0
+                    
+                return sorted(standings.values(), key=cmp_to_key(cmp_standings))
 
             def prompt_advance_knockout(e):
                 safe_cloud_sync(); fresh_tourn = _get_tournament()
