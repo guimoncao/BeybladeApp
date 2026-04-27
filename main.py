@@ -237,7 +237,7 @@ def main(page: ft.Page):
         res = m_data.get("result", {}); b1_name = b_map.get(m_data.get("blader1"), "W.O. / A Definir"); b2_name = b_map.get(m_data.get("blader2"), "W.O. / A Definir")
         f1 = res.get("blader1Result", {}).get("finishes", {}); f2 = res.get("blader2Result", {}).get("finishes", {})
         def f_row(label, key, color): return ft.Row([ft.Text(str(f1.get(key, 0)), color=color, weight=ft.FontWeight.BOLD, size=16, width=30, text_align="center"), ft.Text(label, color=C_TEXT_SEC, expand=True, text_align="center", size=13), ft.Text(str(f2.get(key, 0)), color=color, weight=ft.FontWeight.BOLD, size=16, width=30, text_align="center")])
-        dlg = ft.AlertDialog(bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16), content_padding=24, title=ft.Text("Raio-X da Partida", color=C_TEXT_PRI, weight=ft.FontWeight.BOLD, size=18, text_align="center"), content=ft.Column([ft.Row([ft.Text(b1_name, weight=ft.FontWeight.W_600, color=C_TEXT_PRI, expand=True, text_align="center", size=14), ft.Text("VS", size=11, color=C_TEXT_SEC), ft.Text(b2_name, weight=ft.FontWeight.W_600, color=C_TEXT_PRI, expand=True, text_align="center", size=14)]), ft.Divider(color=C_BORDER, height=20), f_row("XTREME", "xtreme", C_XTREME), f_row("BURST", "burst", C_BURST), f_row("OVER", "over", C_OVER), f_row("SPIN", "spin", C_SPIN), f_row("FLAG", "flag", C_FLAG), ft.Divider(color=C_BORDER, height=20), ft.Row([ft.Text(str(res.get("blader1Result", {}).get("totalPoints", 0)), size=24, color=C_PRIMARY, weight=ft.FontWeight.BOLD, width=30, text_align="center"), ft.Text("PONTOS", color=C_TEXT_PRI, weight=ft.FontWeight.BOLD, expand=True, text_align="center", size=14), ft.Text(str(res.get("blader2Result", {}).get("totalPoints", 0)), size=24, color=C_PRIMARY, weight=ft.FontWeight.BOLD, width=30, text_align="center")])], tight=True), actions=[SecondaryBtn("Fechar", lambda _: hide_dialog(dlg))])
+        dlg = ft.AlertDialog(bgcolor=C_SURFACE, shape=ft.RoundedRectangleBorder(radius=16), content_padding=24, title=ft.Text("Raio-X da Partida", color=C_TEXT_PRI, weight=ft.FontWeight.BOLD, size=18, text_align="center"), content=ft.Column([ft.Row([ft.Text(b1_name, weight=ft.FontWeight.W_600, color=C_TEXT_PRI, expand=True, text_align="center", size=14), ft.Text("VS", size=11, color=C_TEXT_SEC), ft.Text(b2_name, weight=ft.FontWeight.W_600, color=C_TEXT_PRI, expand=True, text_align="center", size=14)]), ft.Divider(color=C_BORDER, height=20), f_row("XTREME", "xtreme", C_XTREME), f_row("BURST", "burst", C_BURST), f_row("OVER", "over", C_OVER), f_row("SPIN", "spin", C_SPIN), f_row("FLAG", "flag", C_FLAG), ft.Divider(color=C_BORDER, height=20), ft.Row([ft.Text(str(res.get("blader1Result", {}).get("totalPoints", 0)), size=24, color=C_PRIMARY, weight=ft.FontWeight.BOLD, width=30, text_align="center"), ft.Text("PONTOS GERAIS", color=C_TEXT_PRI, weight=ft.FontWeight.BOLD, expand=True, text_align="center", size=12), ft.Text(str(res.get("blader2Result", {}).get("totalPoints", 0)), size=24, color=C_PRIMARY, weight=ft.FontWeight.BOLD, width=30, text_align="center")])], tight=True), actions=[SecondaryBtn("Fechar", lambda _: hide_dialog(dlg))])
         show_dialog(dlg)
 
     # --- TELA DE LOGIN ---
@@ -517,26 +517,62 @@ def main(page: ft.Page):
             
         if tourn_state["sub_tab"] == "combat":
             m_data = tourn_state["active_match"]; state = tourn_state["match_state"]
+            is_md3 = m_data.get("is_md3", False)
+            
             score_p1 = ft.Text(str(state["p1_score"]), size=64, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI)
             score_p2 = ft.Text(str(state["p2_score"]), size=64, weight=ft.FontWeight.BOLD, color=C_TEXT_PRI)
+            
+            sets_p1 = ft.Text(f"Sets: {state.get('p1_sets', 0)}", size=18, color=C_PRIMARY, weight=ft.FontWeight.BOLD) if is_md3 else ft.Container()
+            sets_p2 = ft.Text(f"Sets: {state.get('p2_sets', 0)}", size=18, color=C_PRIMARY, weight=ft.FontWeight.BOLD) if is_md3 else ft.Container()
 
             def process_win():
                 if state["match_ended"]: return 
-                state["match_ended"] = True; w_id = m_data["b1_id"] if state["p1_score"] > state["p2_score"] else m_data["b2_id"]
+                state["match_ended"] = True
+                
+                # Se for MD3, quem avança é quem fez mais sets. Senão, quem fez mais pontos no jogo único.
+                if is_md3:
+                    w_id = m_data["b1_id"] if state.get("p1_sets", 0) > state.get("p2_sets", 0) else m_data["b2_id"]
+                else:
+                    w_id = m_data["b1_id"] if state["p1_score"] > state["p2_score"] else m_data["b2_id"]
+                
                 def finish_match(e):
                     hide_dialog(dlg)
                     def async_save_match():
                         safe_cloud_sync(); fresh_t = _get_tournament()
                         loser_id = m_data["b2_id"] if w_id == m_data["b1_id"] else m_data["b1_id"]
                         
+                        def get_total_pts(f): return f.get("xtreme",0)*3 + f.get("burst",0)*2 + f.get("over",0)*2 + f.get("spin",0)*1 + f.get("flag",0)*1
+                        
+                        final_res = {
+                            "blader1Result": {"bladerId": m_data["b1_id"], "totalPoints": get_total_pts(state["p1_finishes"]), "finishes": state["p1_finishes"]}, 
+                            "blader2Result": {"bladerId": m_data["b2_id"], "totalPoints": get_total_pts(state["p2_finishes"]), "finishes": state["p2_finishes"]}, 
+                            "winner": w_id
+                        }
+
                         if m_data["is_knockout"]:
                             target_w, target_l = None, None
                             for r in fresh_t.get("knockout", []):
                                 for m in r.get("matches", []):
                                     if m.get("id") == m_data["match_id"]:
                                         m["completed"] = True
-                                        m["result"] = {"blader1Result": {"bladerId": m_data["b1_id"], "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": m_data["b2_id"], "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
-                                        target_w = m.get("target_w"); target_l = m.get("target_l"); break
+                                        m["result"] = final_res
+                                        target_w = m.get("target_w"); target_l = m.get("target_l")
+                                        
+                                        # MÁGICA DO BRACKET RESET
+                                        if m.get("id") == "gf":
+                                            losses = 0
+                                            for rx in fresh_t.get("knockout", []):
+                                                for mx in rx.get("matches", []):
+                                                    if mx.get("completed") and mx.get("id") != "gf":
+                                                        res_x = mx.get("result", {})
+                                                        if res_x.get("blader1Result", {}).get("bladerId") == w_id and res_x.get("winner") != w_id: losses += 1
+                                                        if res_x.get("blader2Result", {}).get("bladerId") == w_id and res_x.get("winner") != w_id: losses += 1
+                                            
+                                            if losses > 0 and not fresh_t.get("gf_reset_created"):
+                                                reset_match = {"id": "gf_reset", "name": "Grande Final (Reset)", "blader1": m.get("blader1"), "blader2": m.get("blader2"), "completed": False, "judge": m.get("judge"), "is_md3": False}
+                                                fresh_t["knockout"].append({"name": "Grande Final - Bracket Reset", "matches": [reset_match]})
+                                                fresh_t["gf_reset_created"] = True
+                                        break
                             
                             for rr in fresh_t.get("knockout", []):
                                 for mm in rr.get("matches", []):
@@ -572,7 +608,7 @@ def main(page: ft.Page):
                                     for m in g.get("matches", []):
                                         if m.get("id") == m_data["match_id"]:
                                             m["completed"] = True
-                                            m["result"] = {"blader1Result": {"bladerId": m_data["b1_id"], "totalPoints": state["p1_score"], "finishes": state["p1_finishes"]}, "blader2Result": {"bladerId": m_data["b2_id"], "totalPoints": state["p2_score"], "finishes": state["p2_finishes"]}, "winner": w_id}
+                                            m["result"] = final_res
                         _save_tournament(fresh_t); tourn_state["sub_tab"] = "partidas"; tourn_state["active_match"] = None; refresh_current_tab() 
                     threading.Thread(target=async_save_match, daemon=True).start()
 
@@ -584,11 +620,27 @@ def main(page: ft.Page):
                 if player == 1: state["p1_score"] += pts; state["p1_finishes"][t_finish] += 1; score_p1.value = str(state["p1_score"])
                 else: state["p2_score"] += pts; state["p2_finishes"][t_finish] += 1; score_p2.value = str(state["p2_score"])
                 page.update(); 
-                if state["p1_score"] >= PTS_WIN_TARGET or state["p2_score"] >= PTS_WIN_TARGET: process_win()
+                
+                if state["p1_score"] >= PTS_WIN_TARGET or state["p2_score"] >= PTS_WIN_TARGET:
+                    if is_md3:
+                        if state["p1_score"] >= PTS_WIN_TARGET: state["p1_sets"] = state.get("p1_sets", 0) + 1
+                        else: state["p2_sets"] = state.get("p2_sets", 0) + 1
+                        
+                        if state.get("p1_sets", 0) >= 2 or state.get("p2_sets", 0) >= 2:
+                            process_win()
+                        else:
+                            state["p1_score"] = 0; state["p2_score"] = 0
+                            score_p1.value = "0"; score_p2.value = "0"
+                            sets_p1.value = f"Sets: {state['p1_sets']}"; sets_p2.value = f"Sets: {state['p2_sets']}"
+                            page.snack_bar = ft.SnackBar(ft.Text("🏁 Fim do Set! Iniciando próximo jogo..."), bgcolor=C_SUCCESS)
+                            page.snack_bar.open = True
+                            page.update()
+                    else:
+                        process_win()
 
             def action_col(p): return ft.Column([PrimaryBtn(f"XTREME (+3)", lambda _: add_points(p, 3, "xtreme"), width=145, height=44, color=C_PRIMARY), SecondaryBtn(f"BURST (+2)", lambda _: add_points(p, 2, "burst"), width=145, height=44), SecondaryBtn(f"OVER (+2)", lambda _: add_points(p, 2, "over"), width=145, height=44), SecondaryBtn(f"SPIN (+1)", lambda _: add_points(p, 1, "spin"), width=145, height=44)], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
-            return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [tourn_state.update({"sub_tab": "partidas", "active_match": None}), refresh_current_tab()]), ft.Text("PARTIDA OFICIAL", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_ERROR if m_data["is_knockout"] else C_PRIMARY, padding=12), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([ft.Text(m_data["b1_name"]), score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300), ft.Column([ft.Text(m_data["b2_name"]), score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)]), ft.Container(expand=True)]))]))
+            return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([IconButton(ft.Icons.ARROW_BACK, lambda _: [tourn_state.update({"sub_tab": "partidas", "active_match": None}), refresh_current_tab()]), ft.Text(f"PARTIDA OFICIAL {'(MD3)' if is_md3 else ''}", color=C_TEXT_PRI, weight=ft.FontWeight.W_600, size=13, expand=True, text_align="center"), ft.Container(width=42)]), bgcolor=C_ERROR if m_data["is_knockout"] else C_PRIMARY, padding=12), ft.Container(padding=24, expand=True, content=ft.Column([ft.Row([ft.Column([ft.Text(m_data["b1_name"]), sets_p1, score_p1, action_col(1)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER), ft.Container(width=1, bgcolor=C_BORDER, height=300), ft.Column([ft.Text(m_data["b2_name"]), sets_p2, score_p2, action_col(2)], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)]), ft.Container(expand=True)]))]))
             
         else:
             def open_admin_panel(e):
@@ -642,10 +694,17 @@ def main(page: ft.Page):
                 for g in fresh_tourn.get("groups", []):
                     if not all(m.get("completed") for m in g.get("matches", [])): page.snack_bar = ft.SnackBar(ft.Text("⚠️ Finalize todas as partidas primeiro!"), bgcolor=C_ERROR); page.snack_bar.open = True; page.update(); return
 
-                dd_format = ft.Dropdown(options=[ft.dropdown.Option(key="single", text="Eliminação Simples"), ft.dropdown.Option(key="double", text="Dupla Eliminação (Upper/Lower Bracket)")], value="single", label="Formato", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI)
+                dd_format = ft.Dropdown(options=[
+                    ft.dropdown.Option(key="single", text="Eliminação Simples"), 
+                    ft.dropdown.Option(key="single_md3", text="Simples (MD3 nas Semis/Final)"), 
+                    ft.dropdown.Option(key="double", text="Dupla Eliminação (Upper/Lower Bracket)")
+                ], value="single", label="Formato do Mata-Mata", bgcolor=C_SURFACE_SEC, border_color=C_BORDER, color=C_TEXT_PRI)
                 
                 def do_advance(e):
-                    hide_dialog(dlg); is_double = (dd_format.value == "double")
+                    hide_dialog(dlg); 
+                    is_double = (dd_format.value == "double")
+                    is_single_md3 = (dd_format.value == "single_md3")
+                    
                     adv_per_group = int(fresh_tourn.get("advancing_per_group", 2)); seeded_players = []
                     for pos in range(adv_per_group):
                         for g in fresh_tourn.get("groups", []):
@@ -664,13 +723,15 @@ def main(page: ft.Page):
                     order = get_seeds(p2); ordered_players = [padded[i] for i in order]
                     
                     knockout = []; flat_matches = {}; rounds = int(math.log2(p2))
-                    def m_node(m_id, name): return {"id": m_id, "name": name, "blader1": None, "blader2": None, "completed": False, "judge": random.choice(["juiz_1", "juiz_2"])}
+                    def m_node(m_id, name, is_md3=False): 
+                        return {"id": m_id, "name": name, "blader1": None, "blader2": None, "completed": False, "judge": random.choice(["juiz_1", "juiz_2"]), "is_md3": is_md3}
                     
                     ub_rounds = []
                     for r in range(rounds):
                         rm = []
                         for m in range(p2 // (2**(r+1))):
-                            match = m_node(f"ub-r{r}-m{m}", f"Winner Bracket R{r+1}" if r<rounds-1 else "Final Winner Bracket")
+                            is_semi_or_final = (r >= rounds - 2)
+                            match = m_node(f"ub-r{r}-m{m}", f"Winner Bracket R{r+1}" if r<rounds-1 else "Final Winner Bracket", is_md3=(is_single_md3 and is_semi_or_final))
                             rm.append(match); flat_matches[match["id"]] = match
                         ub_rounds.append(rm)
                     
@@ -712,7 +773,8 @@ def main(page: ft.Page):
                         knockout.append({"name": "Grande Final", "matches": [gf]})
                     else:
                         if rounds >= 2:
-                            tp = m_node("tp", "Disputa 3º Lugar"); flat_matches[tp["id"]] = tp
+                            tp = m_node("tp", "Disputa 3º Lugar", is_md3=is_single_md3)
+                            flat_matches[tp["id"]] = tp
                             for m in range(2): ub_rounds[rounds-2][m]["target_l"] = tp["id"]
                             ub_rounds.append([tp])
                         for i, r in enumerate(ub_rounds): knockout.append({"name": f"Rodada {i+1}", "matches": r})
@@ -757,15 +819,15 @@ def main(page: ft.Page):
                     if is_ko and (match_data.get("blader1") is None or match_data.get("blader2") is None): return ft.Text("Aguardando...", color=C_TEXT_SEC, size=12)
                     assigned_judge = match_data.get("judge")
                     if has_torneio_access() or assigned_judge == get_username():
-                        action_data = {"is_knockout": is_ko, "round_idx": r_idx, "match_id": match_data.get("id"), "group_id": match_data.get("groupId"), "b1_id": match_data.get("blader1"), "b1_name": b1_n, "b2_id": match_data.get("blader2"), "b2_name": b2_n, "judge": assigned_judge}
-                        return PrimaryBtn("Jogar", lambda e: [tourn_state.update({"active_match": e.control.data, "match_state": {"p1_score": 0, "p2_score": 0, "p1_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "p2_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "match_ended": False}, "sub_tab": "combat"}), refresh_current_tab()], height=36, width=80, data=action_data)
+                        action_data = {"is_knockout": is_ko, "round_idx": r_idx, "match_id": match_data.get("id"), "group_id": match_data.get("groupId"), "b1_id": match_data.get("blader1"), "b1_name": b1_n, "b2_id": match_data.get("blader2"), "b2_name": b2_n, "judge": assigned_judge, "is_md3": match_data.get("is_md3", False)}
+                        return PrimaryBtn("Jogar", lambda e: [tourn_state.update({"active_match": e.control.data, "match_state": {"p1_score": 0, "p2_score": 0, "p1_sets": 0, "p2_sets": 0, "p1_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "p2_finishes": {"spin": 0, "over": 0, "burst": 0, "xtreme": 0, "flag": 0}, "match_ended": False}, "sub_tab": "combat"}), refresh_current_tab()], height=36, width=80, data=action_data)
                     else: return ft.Row([ft.Icon(ft.Icons.LOCK, size=14, color=C_TEXT_SEC), ft.Text(f"Apito: {assigned_judge or 'Admin'}", color=C_TEXT_SEC, size=11)])
 
             for group in tourn.get("groups", []):
                 sorted_st = get_group_standings(group); g_col = ft.Column([ft.Text(group.get("name", "Grupo"), size=16, weight=ft.FontWeight.W_600, color=C_TEXT_PRI)])
-                g_col.controls.append(ft.Container(content=ft.Row([ft.Text("#", width=20, size=12, color=C_TEXT_SEC), ft.Text("Blader", expand=True, size=12, color=C_TEXT_SEC), ft.Text("J", width=25, size=12, color=C_TEXT_SEC), ft.Text("V", width=25, size=12, color=C_TEXT_SEC), ft.Text("PF", width=25, size=12, color=C_TEXT_SEC), ft.Text("Sld", width=30, size=12, color=C_TEXT_SEC)]), padding=8, border=ft.border.only(bottom=ft.BorderSide(1, C_BORDER))))
+                g_col.controls.append(ft.Container(content=ft.Row([ft.Text("#", width=20, size=12, color=C_TEXT_SEC), ft.Text("Blader", expand=True, size=12, color=C_TEXT_SEC), ft.Text("J", width=25, size=12, color=C_TEXT_SEC), ft.Text("V", width=25, size=12, color=C_TEXT_SEC), ft.Text("PF", width=25, size=12, color=C_TEXT_SEC), ft.Text("PS", width=25, size=12, color=C_TEXT_SEC), ft.Text("Sld", width=30, size=12, color=C_TEXT_SEC)]), padding=8, border=ft.border.only(bottom=ft.BorderSide(1, C_BORDER))))
                 adv_limit = int(tourn.get("advancing_per_group", 2))
-                for idx, st in enumerate(sorted_st): g_col.controls.append(ft.Container(content=ft.Row([ft.Text(str(idx+1), width=20, size=14, color=C_TEXT_PRI if idx < adv_limit else C_TEXT_SEC), ft.Text(st["name"], expand=True, size=14, color=C_TEXT_PRI), ft.Text(str(st["j"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["v"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["pf"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["saldo"]), width=30, size=14, color=C_SUCCESS if st["saldo"] > 0 else C_ERROR)]), padding=8, bgcolor=C_SURFACE_SEC if idx < adv_limit else "transparent", border_radius=8))
+                for idx, st in enumerate(sorted_st): g_col.controls.append(ft.Container(content=ft.Row([ft.Text(str(idx+1), width=20, size=14, color=C_TEXT_PRI if idx < adv_limit else C_TEXT_SEC), ft.Text(st["name"], expand=True, size=14, color=C_TEXT_PRI), ft.Text(str(st["j"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["v"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["pf"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["ps"]), width=25, size=14, color=C_TEXT_SEC), ft.Text(str(st["saldo"]), width=30, size=14, color=C_SUCCESS if st["saldo"] > 0 else C_ERROR)]), padding=8, bgcolor=C_SURFACE_SEC if idx < adv_limit else "transparent", border_radius=8))
                 view_grupos.controls.append(AppCard(g_col))
 
                 view_partidas.controls.append(ft.Text(group.get("name", ""), size=14, weight=ft.FontWeight.W_600, color=C_TEXT_SEC, margin=ft.margin.only(top=8)))
