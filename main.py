@@ -269,9 +269,9 @@ def main(pg: ft.Page):
                     for i in range(n // 2):
                         p1, p2 = b_ids[i], b_ids[n - 1 - i]
                         cp = (p1 == "BYE" or p2 == "BYE"); wn = p2 if p1 == "BYE" else p1; rs = {"winner": wn} if cp else {}
-                        m.append({"id": f"r{rnd}-{i}-{int(time.time()*1000)}", "name": f"Rodada {rnd+1}", "groupId": "fi", "blader1": p1, "blader2": p2, "completed": cp, "result": rs, "judge": jp[len(m) % 4]})
+                        m.append({"id": f"r{rnd}-{i}-{int(time.time()*1000)}", "name": f"Rodada {rnd+1}", "groupId": "swiss", "blader1": p1, "blader2": p2, "completed": cp, "result": rs, "judge": jp[len(m) % 4]})
                     b_ids.insert(1, b_ids.pop())
-                st({"id": str(int(time.time())), "name": ni.value.strip(), "date": datetime.now().strftime('%d/%m/%Y %H:%M'), "groups": [{"id": "fi", "name": "Fase Suíça (4 Partidas)", "bladerIds": [b["id"] for b in s_bds], "matches": m}], "status": "groups", "knockout": [], "participants": {b["id"]: b["name"] for b in s_bds}, "advancing_per_group": 16}, co())
+                st({"id": str(int(time.time())), "name": ni.value.strip(), "date": datetime.now().strftime('%d/%m/%Y %H:%M'), "groups": [{"id": "swiss", "name": "Fase Suíça (4 Partidas)", "bladerIds": [b["id"] for b in s_bds], "matches": m}], "status": "groups", "knockout": [], "participants": {b["id"]: b["name"] for b in s_bds}, "advancing_per_group": 16}, co())
                 hos["ids"].clear(); sht("selecao"); tst["sub"] = "grupos"; ntt("Torneio") 
             
             vcf.content = ft.Column([ft.Text("Passo 2: Confirmar Oficial", size=14, color=C_TXTS), AC(ft.Column([ni, ft.Text("Oficial FBRJ: Fase Suíça (4 partidas) ➔ Corte Top 16 (Winner/Lower).", color=C_PRI, size=13)], spacing=16)), ft.Row([SB("Voltar", lambda _: sht("selecao"), exp=True), PB("Gerar 1ª Fase", cc, exp=True)], spacing=12)], scroll="auto"); sht("config")
@@ -542,7 +542,7 @@ def main(pg: ft.Page):
         def sst(tn):
             vst["sub"] = tn; ig = tn == "grupos"
             tb = [ft.Container(content=ft.Text("Fase Suíça", size=14, weight="w600", color=C_TXT if ig else C_TXTS), expand=True, bgcolor=C_SURS if ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("grupos"))]
-            if t.get("status") == "knockout": tb.append(ft.Container(content=ft.Text("Chaveamento (Top 16)", size=14, weight="w600", color=C_PRI if not ig else C_TXTS), expand=True, bgcolor=f"{C_PRI}15" if not ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("matamata")))
+            if t.get("status") == "knockout": tb.append(ft.Container(content=ft.Text("Chaveamento", size=14, weight="w600", color=C_PRI if not ig else C_TXTS), expand=True, bgcolor=f"{C_PRI}15" if not ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("matamata")))
             tnc.content, csw.content = ft.Container(content=ft.Row(tb, spacing=4), bgcolor=C_BG, border=ft.border.all(1, C_BOR), border_radius=10, padding=4), (vg if ig else vm); pg.update()
         sst(vst["sub"]); return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([ft.Column([ft.Text("TRANSMISSÃO AO VIVO", size=12, color=C_ERR, weight="bold"), ft.Text(t.get("name",""), size=24, weight="bold", color=C_TXT)], spacing=0), ft.Icon(ft.Icons.TV, color=C_TXTS, size=32)], alignment="spaceBetween"), padding=24), tnc, ft.Container(content=csw, padding=ft.padding.symmetric(horizontal=24), expand=True)]))
 
@@ -629,6 +629,7 @@ def main(pg: ft.Page):
 
     ca = ft.Container(expand=True)
     TM = {"Bladers": bhv, "Treino": btrv, "Combate": bqmv, "Torneio": btmv, "Telão": build_viewer_view, "Histórico": build_history_view, "Admin": build_admin_view, "Perfil": bpv}
+    
     def ctp(idx):
         if not bn.destinations: return
         ca.content = None; pg.update()
@@ -639,6 +640,7 @@ def main(pg: ft.Page):
             if d.label == tl: bn.selected_index = i; bn.update(); ctp(i); break
     def ct(e): bn.selected_index = int(e.data) if hasattr(e, 'data') and str(e.data).isdigit() else e.control.selected_index; bn.update(); ctp(bn.selected_index)
     def rct(): ctp(bn.selected_index) if bn.visible and bn.destinations else None
+    
     def sma():
         lc.visible, mac.visible, bn.visible = False, True, True; ast["avo"] = "admin"; uab()
         r = cu().get("role", "basic"); ds = []
@@ -650,10 +652,11 @@ def main(pg: ft.Page):
         if r in ["admin_max", "pro", "organizador", "judge"]: ds.append(ft.NavigationBarDestination(icon=ft.Icons.HISTORY_OUTLINED, label="Histórico"))
         if r == "admin_max": ds.append(ft.NavigationBarDestination(icon=ft.Icons.ADMIN_PANEL_SETTINGS_OUTLINED, label="Admin"))
         ds.append(ft.NavigationBarDestination(icon=ft.Icons.PERSON_OUTLINE, label="Perfil"))
-        bn.destinations.clear(); bn.destinations.extend(ds)
-        bn.selected_index, bn.on_change = 0, ct; pg.update(); ctp(0)
+        
+        bn.destinations = ds; bn.selected_index = 0; bn.on_change = ct; pg.update(); ctp(0)
 
     mac.content = ft.Column([ca], expand=True); pg.add(lc, mac, bn)
+    
     def asl():
         while True:
             time.sleep(5) 
@@ -662,13 +665,13 @@ def main(pg: ft.Page):
                 r = requests.get(FB_URL, timeout=5)
                 if r.status_code == 200 and r.json():
                     n = r.json()
-                    if isinstance(n, dict): # Trava de segurança para evitar erro vermelho na tela
+                    if isinstance(n, dict):
                         with dblk:
                             if ast.get("cu"):
                                 u = ast["cu"]["username"]
                                 if u in n.get("users", {}):
                                     tk = n["users"][u].get("session_token")
-                                    if tk and ast.get("stk") and tk != ast.get("stk"): lo(frc=True); continue
+                                    if tk and ast.get("stk") and tk != ast.get("stk"): continue
                             if n.get("last_updated", 0) > db.get("last_updated", 0): db.clear(); db.update(n); nr = True
                             else: nr = False
                         if nr and bn.destinations and bn.destinations[bn.selected_index].label not in ["Bladers", "Treino", "Combate", "Admin"]: rct()
