@@ -400,6 +400,7 @@ def main(pg: ft.Page):
                     if len(sds) < 16: sds += ["BYE"] * (16 - len(sds))
                     fl = {}
                     def nd(nid, n, p1, p2, tw, tl, m3=False):
+                        # FASE FINAL: Apenas Juízes 1 e 2 são escalados para o Mata-Mata
                         nx = {"id": nid, "name": n, "blader1": p1, "blader2": p2, "completed": False, "judge": random.choice(["juiz_1", "juiz_2"]), "is_md3": m3, "target_w": tw, "target_l": tl}
                         fl[nid] = nx; return nx
 
@@ -541,7 +542,7 @@ def main(pg: ft.Page):
         def sst(tn):
             vst["sub"] = tn; ig = tn == "grupos"
             tb = [ft.Container(content=ft.Text("Fase Suíça", size=14, weight="w600", color=C_TXT if ig else C_TXTS), expand=True, bgcolor=C_SURS if ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("grupos"))]
-            if t.get("status") == "knockout": tb.append(ft.Container(content=ft.Text("Chaveamento", size=14, weight="w600", color=C_PRI if not ig else C_TXTS), expand=True, bgcolor=f"{C_PRI}15" if not ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("matamata")))
+            if t.get("status") == "knockout": tb.append(ft.Container(content=ft.Text("Chaveamento (Top 16)", size=14, weight="w600", color=C_PRI if not ig else C_TXTS), expand=True, bgcolor=f"{C_PRI}15" if not ig else "transparent", padding=12, alignment=ft.Alignment(0,0), border_radius=8, on_click=lambda _: sst("matamata")))
             tnc.content, csw.content = ft.Container(content=ft.Row(tb, spacing=4), bgcolor=C_BG, border=ft.border.all(1, C_BOR), border_radius=10, padding=4), (vg if ig else vm); pg.update()
         sst(vst["sub"]); return ft.Container(padding=0, content=ft.Column([ft.Container(content=ft.Row([ft.Column([ft.Text("TRANSMISSÃO AO VIVO", size=12, color=C_ERR, weight="bold"), ft.Text(t.get("name",""), size=24, weight="bold", color=C_TXT)], spacing=0), ft.Icon(ft.Icons.TV, color=C_TXTS, size=32)], alignment="spaceBetween"), padding=24), tnc, ft.Container(content=csw, padding=ft.padding.symmetric(horizontal=24), expand=True)]))
 
@@ -574,7 +575,7 @@ def main(pg: ft.Page):
                 vt.controls.append(ft.Text(r.get("name", ""), size=14, weight="w600", color=C_TXTS, margin=ft.margin.only(top=8)))
                 for m in r.get("matches", []):
                     if m.get("name"): vt.controls.append(ft.Text(m.get("name"), size=12, color=C_PRI, text_align="center"))
-                    id1, id2 = m.get("blader1"), m.get("blader2"); b1n = bm.get(id1, "A def") if id1 and id1 != "BYE" else "BYE" if id1 == "BYE" else "A def"; b2n = bm.get(id2, "A def") if id2 and id2 != "BYE" else "BYE" if id2 == "BYE" else "A def"
+                    id1, id2 = m.get("blader1"), m.get("blader2"); b1n = bm.get(id1, "A def") if id1 and id1 != "BYE" else "W.O." if id1 == "BYE" else "A def"; b2n = bm.get(id2, "A def") if id2 and id2 != "BYE" else "W.O." if id2 == "BYE" else "A def"
                     if m.get("completed"):
                         rs = m.get("result", {})
                         if rs.get("winner") == "BYE" or id1 == "BYE" or id2 == "BYE": sui = ft.Text("Avançou (W.O.)", color=C_TXTS, size=12, weight="bold")
@@ -649,7 +650,8 @@ def main(pg: ft.Page):
         if r in ["admin_max", "pro", "organizador", "judge"]: ds.append(ft.NavigationBarDestination(icon=ft.Icons.HISTORY_OUTLINED, label="Histórico"))
         if r == "admin_max": ds.append(ft.NavigationBarDestination(icon=ft.Icons.ADMIN_PANEL_SETTINGS_OUTLINED, label="Admin"))
         ds.append(ft.NavigationBarDestination(icon=ft.Icons.PERSON_OUTLINE, label="Perfil"))
-        bn.destinations, bn.selected_index, bn.on_change = ds, 0, ct; pg.update(); ctp(0)
+        bn.destinations.clear(); bn.destinations.extend(ds)
+        bn.selected_index, bn.on_change = 0, ct; pg.update(); ctp(0)
 
     mac.content = ft.Column([ca], expand=True); pg.add(lc, mac, bn)
     def asl():
@@ -660,7 +662,7 @@ def main(pg: ft.Page):
                 r = requests.get(FB_URL, timeout=5)
                 if r.status_code == 200 and r.json():
                     n = r.json()
-                    if isinstance(n, dict): # Trava de segurança para Firebase
+                    if isinstance(n, dict): # Trava de segurança para evitar erro vermelho na tela
                         with dblk:
                             if ast.get("cu"):
                                 u = ast["cu"]["username"]
